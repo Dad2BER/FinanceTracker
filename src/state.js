@@ -1,0 +1,106 @@
+import { loadData, saveData } from "./services/storage.js";
+import { generateId } from "./utils/uuid.js";
+
+// Central reactive state
+let _data = loadData();
+let _listeners = [];
+
+function notify() {
+  _listeners.forEach((fn) => fn());
+}
+
+export function subscribe(fn) {
+  _listeners.push(fn);
+  return () => {
+    _listeners = _listeners.filter((l) => l !== fn);
+  };
+}
+
+export function getAccounts() {
+  return _data.accounts;
+}
+
+export function getAccount(id) {
+  return _data.accounts.find((a) => a.id === id) || null;
+}
+
+export function addAccount(name, taxType) {
+  const account = {
+    id: generateId(),
+    name: name.trim(),
+    taxType,
+    createdAt: new Date().toISOString(),
+    holdings: [],
+  };
+  _data = { ..._data, accounts: [..._data.accounts, account] };
+  saveData(_data);
+  notify();
+  return account;
+}
+
+export function updateAccount(id, name, taxType) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) =>
+      a.id === id ? { ...a, name: name.trim(), taxType } : a
+    ),
+  };
+  saveData(_data);
+  notify();
+}
+
+export function deleteAccount(id) {
+  _data = { ..._data, accounts: _data.accounts.filter((a) => a.id !== id) };
+  saveData(_data);
+  notify();
+}
+
+export function addHolding(accountId, symbol, shares) {
+  const holding = {
+    id: generateId(),
+    symbol: symbol.trim().toUpperCase(),
+    shares: parseFloat(shares),
+  };
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) =>
+      a.id === accountId
+        ? { ...a, holdings: [...a.holdings, holding] }
+        : a
+    ),
+  };
+  saveData(_data);
+  notify();
+  return holding;
+}
+
+export function updateHolding(accountId, holdingId, symbol, shares) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) => {
+      if (a.id !== accountId) return a;
+      return {
+        ...a,
+        holdings: a.holdings.map((h) =>
+          h.id === holdingId
+            ? { ...h, symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) }
+            : h
+        ),
+      };
+    }),
+  };
+  saveData(_data);
+  notify();
+}
+
+export function deleteHolding(accountId, holdingId) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) => {
+      if (a.id !== accountId) return a;
+      return { ...a, holdings: a.holdings.filter((h) => h.id !== holdingId) };
+    }),
+  };
+  saveData(_data);
+  notify();
+}
