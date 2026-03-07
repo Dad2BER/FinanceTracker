@@ -83,6 +83,8 @@ export function renderHoldingList(
           <tr>
             <th>Symbol</th>
             <th class="align-right">Shares</th>
+            <th>Origin</th>
+            <th>Type</th>
             <th class="align-right">Price</th>
             <th class="align-right">Value</th>
             <th></th>

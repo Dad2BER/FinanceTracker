@@ -55,11 +55,13 @@ export function deleteAccount(id) {
   notify();
 }
 
-export function addHolding(accountId, symbol, shares) {
+export function addHolding(accountId, symbol, shares, origin, assetType) {
   const holding = {
     id: generateId(),
     symbol: symbol.trim().toUpperCase(),
     shares: parseFloat(shares),
+    ...(origin ? { origin } : {}),
+    ...(assetType ? { assetType } : {}),
   };
   _data = {
     ..._data,
@@ -74,18 +76,20 @@ export function addHolding(accountId, symbol, shares) {
   return holding;
 }
 
-export function updateHolding(accountId, holdingId, symbol, shares) {
+export function updateHolding(accountId, holdingId, symbol, shares, origin, assetType) {
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) => {
       if (a.id !== accountId) return a;
       return {
         ...a,
-        holdings: a.holdings.map((h) =>
-          h.id === holdingId
-            ? { ...h, symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) }
-            : h
-        ),
+        holdings: a.holdings.map((h) => {
+          if (h.id !== holdingId) return h;
+          const updated = { ...h, symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) };
+          if (origin) updated.origin = origin; else delete updated.origin;
+          if (assetType) updated.assetType = assetType; else delete updated.assetType;
+          return updated;
+        }),
       };
     }),
   };

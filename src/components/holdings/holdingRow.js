@@ -26,9 +26,23 @@ export function createHoldingRow(accountId, holding, prices, pricesLoading) {
     valueCell = `<td class="align-right dim">—</td>`;
   }
 
+  const ORIGIN_LABELS = { domestic: "Domestic", international: "International" };
+  const TYPE_LABELS = {
+    "stock-fund": "Stock Fund", "real-estate": "Real-estate",
+    company: "Company", crypto: "Crypto", bonds: "Bonds", cash: "Cash",
+  };
+  const originCell = holding.origin
+    ? `<td>${ORIGIN_LABELS[holding.origin] ?? escHtml(holding.origin)}</td>`
+    : `<td><span class="dim">—</span></td>`;
+  const typeCell = holding.assetType
+    ? `<td>${TYPE_LABELS[holding.assetType] ?? escHtml(holding.assetType)}</td>`
+    : `<td><span class="dim">—</span></td>`;
+
   tr.innerHTML = `
     <td class="symbol-cell"><strong>${escHtml(holding.symbol)}</strong></td>
     <td class="align-right">${holding.shares.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td>
+    ${originCell}
+    ${typeCell}
     ${priceCell}
     ${valueCell}
     <td class="actions-cell">
