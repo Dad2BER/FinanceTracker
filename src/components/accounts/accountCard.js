@@ -20,7 +20,7 @@ export function createAccountCard(account, prices, pricesLoading, onSelect) {
   let totalValue = null;
   if (prices !== null) {
     totalValue = account.holdings.reduce((sum, h) => {
-      const price = prices[h.symbol];
+      const price = h.assetType === "cash" ? 1 : prices[h.symbol];
       return price !== undefined ? sum + price * h.shares : sum;
     }, 0);
   }

@@ -51,6 +51,19 @@ export function showHoldingForm(accountId, holding = null) {
   const typeSelect = el.querySelector("#hf-type");
   const symbolErr = el.querySelector("#hf-symbol-err");
   const sharesErr = el.querySelector("#hf-shares-err");
+  const symbolLabel = el.querySelector("label[for='hf-symbol']");
+  const sharesLabel = el.querySelector("label[for='hf-shares']");
+
+  function updateCashLabels() {
+    const isCash = typeSelect.value === "cash";
+    symbolLabel.textContent = isCash ? "Label" : "Ticker Symbol";
+    symbolInput.placeholder = isCash ? "e.g. Savings" : "e.g. AAPL";
+    sharesLabel.textContent = isCash ? "Amount ($)" : "Shares";
+    sharesInput.placeholder = isCash ? "e.g. 5000" : "e.g. 10.5";
+  }
+
+  typeSelect.addEventListener("change", updateCashLabels);
+  updateCashLabels();
 
   el.querySelector("#hf-cancel").addEventListener("click", () => Modal.close());
 

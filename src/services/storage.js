@@ -1,5 +1,6 @@
 const STORAGE_KEY = "financetracker_v1";
 const API_KEY_STORAGE = "financetracker_apikey";
+const AV_KEY_STORAGE = "financetracker_avkey";
 
 export function loadData() {
   try {
@@ -25,4 +26,12 @@ export function loadApiKey() {
 
 export function saveApiKey(key) {
   window.localStorage.setItem(API_KEY_STORAGE, key);
+}
+
+export function loadAvKey() {
+  return window.localStorage.getItem(AV_KEY_STORAGE) || "";
+}
+
+export function saveAvKey(key) {
+  window.localStorage.setItem(AV_KEY_STORAGE, key);
 }

@@ -59,7 +59,7 @@ export function renderHoldingList(
     let totalValue = null;
     if (prices !== null) {
       totalValue = account.holdings.reduce((sum, h) => {
-        const p = prices[h.symbol];
+        const p = h.assetType === "cash" ? 1 : prices[h.symbol];
         return p !== undefined ? sum + p * h.shares : sum;
       }, 0);
     }

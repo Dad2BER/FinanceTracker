@@ -10,12 +10,16 @@ import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 export function createHoldingRow(accountId, holding, prices, pricesLoading) {
   const tr = document.createElement("tr");
 
-  const price = prices ? prices[holding.symbol] : undefined;
+  const isCash = holding.assetType === "cash";
+  const price = isCash ? 1 : (prices ? prices[holding.symbol] : undefined);
   const value = price !== undefined ? price * holding.shares : undefined;
 
   let priceCell, valueCell;
 
-  if (pricesLoading) {
+  if (isCash) {
+    priceCell = `<td class="align-right price-cell">${formatCurrency(1)}</td>`;
+    valueCell = `<td class="align-right value-cell">${formatCurrency(holding.shares)}</td>`;
+  } else if (pricesLoading) {
     priceCell = `<td class="align-right"><span class="loading-spinner" aria-label="Loading"></span></td>`;
     valueCell = `<td class="align-right"><span class="loading-spinner" aria-label="Loading"></span></td>`;
   } else if (price !== undefined) {

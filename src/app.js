@@ -1,6 +1,6 @@
 import { getAccounts, getAccount, subscribe } from "./state.js";
-import { fetchQuotes } from "./services/finnhub.js";
-import { loadApiKey, saveApiKey } from "./services/storage.js";
+import { fetchQuotes } from "./services/prices.js";
+import { loadApiKey, saveApiKey, loadAvKey, saveAvKey } from "./services/storage.js";
 import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
 
@@ -19,6 +19,8 @@ const container = document.getElementById("app");
 function initApiKey() {
   const stored = loadApiKey();
   if (stored) window.__FINNHUB_API_KEY__ = stored;
+  const avStored = loadAvKey();
+  if (avStored) window.__AV_API_KEY__ = avStored;
 }
 
 function showApiKeyScreen(isUpdate = false) {
@@ -36,8 +38,13 @@ function showApiKeyScreen(isUpdate = false) {
       <div class="form-group">
         <label for="api-key-input">Finnhub API Key</label>
         <input id="api-key-input" type="text" class="form-input key-input"
-          placeholder="Paste your API key here" autocomplete="off" spellcheck="false">
+          placeholder="Paste your Finnhub key here" autocomplete="off" spellcheck="false">
         <span class="field-error" id="api-key-err"></span>
+      </div>
+      <div class="form-group">
+        <label for="av-key-input">Alpha Vantage API Key <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional — for mutual funds)</span></label>
+        <input id="av-key-input" type="text" class="form-input key-input"
+          placeholder="Paste your Alpha Vantage key here" autocomplete="off" spellcheck="false">
       </div>
       <div class="key-actions">
         ${isUpdate ? '<button class="btn btn-secondary" id="key-cancel">Cancel</button>' : ""}
@@ -54,10 +61,12 @@ function showApiKeyScreen(isUpdate = false) {
   `;
 
   const input = screen.querySelector("#api-key-input");
+  const avInput = screen.querySelector("#av-key-input");
   const errEl = screen.querySelector("#api-key-err");
 
   if (isUpdate) {
     input.value = window.__FINNHUB_API_KEY__ || "";
+    avInput.value = window.__AV_API_KEY__ || "";
     screen.querySelector("#key-cancel").addEventListener("click", () => {
       render();
     });
@@ -73,7 +82,10 @@ function showApiKeyScreen(isUpdate = false) {
     errEl.textContent = "";
     window.__FINNHUB_API_KEY__ = key;
     saveApiKey(key);
-    // Reset prices so they reload with the new key
+    const avKey = avInput.value.trim();
+    window.__AV_API_KEY__ = avKey;
+    if (avKey) saveAvKey(avKey);
+    // Reset prices so they reload with the new keys
     prices = null;
     pricesLoading = false;
     pricesError = null;
@@ -110,7 +122,7 @@ function render() {
       navigateTo({ page: "accounts" });
       return;
     }
-    const symbols = account.holdings.map((h) => h.symbol);
+    const symbols = account.holdings.filter((h) => h.assetType !== "cash").map((h) => h.symbol);
     renderHoldingList(
       container,
       account,
@@ -166,7 +178,7 @@ function loadPricesForCurrentView() {
 }
 
 function uniqueSymbols(accounts) {
-  return [...new Set(accounts.flatMap((a) => a.holdings.map((h) => h.symbol)))];
+  return [...new Set(accounts.flatMap((a) => a.holdings.filter((h) => h.assetType !== "cash").map((h) => h.symbol)))];
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
