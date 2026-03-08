@@ -41,6 +41,29 @@ def init_db():
             asset_type  TEXT,
             sort_order  INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS categories (
+            id   TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS subcategories (
+            id          TEXT PRIMARY KEY,
+            category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+            name        TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS payees (
+            id             TEXT PRIMARY KEY,
+            name           TEXT NOT NULL,
+            subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL
+        );
+        CREATE TABLE IF NOT EXISTS transactions (
+            id             TEXT PRIMARY KEY,
+            account_id     TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            date           TEXT NOT NULL,
+            payee_name     TEXT NOT NULL,
+            subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL,
+            tag            TEXT,
+            amount         REAL NOT NULL
+        );
     """)
     con.commit()
     con.close()
@@ -49,6 +72,8 @@ def init_db():
 def load_state():
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
+
+    # ── Accounts + Holdings + Transactions ────────────────────────────────────
     accounts_rows = con.execute(
         "SELECT * FROM accounts ORDER BY created_at"
     ).fetchall()
@@ -73,27 +98,111 @@ def load_state():
                 holding["assetType"] = h["asset_type"]
             holdings.append(holding)
 
+        tx_rows = con.execute(
+            "SELECT t.*, s.category_id "
+            "FROM transactions t "
+            "LEFT JOIN subcategories s ON s.id = t.subcategory_id "
+            "WHERE t.account_id = ? ORDER BY t.date",
+            (a["id"],)
+        ).fetchall()
+
+        transactions = []
+        for t in tx_rows:
+            tx = {
+                "id":        t["id"],
+                "date":      t["date"],
+                "payeeName": t["payee_name"],
+                "amount":    t["amount"],
+            }
+            if t["subcategory_id"]:
+                tx["subcategoryId"] = t["subcategory_id"]
+            if t["category_id"]:
+                tx["categoryId"] = t["category_id"]
+            if t["tag"]:
+                tx["tag"] = t["tag"]
+            transactions.append(tx)
+
         accounts.append({
-            "id":          a["id"],
-            "name":        a["name"],
-            "taxType":     a["tax_type"],
-            "accountType": a["account_type"],
-            "createdAt":   a["created_at"],
-            "holdings":    holdings,
+            "id":           a["id"],
+            "name":         a["name"],
+            "taxType":      a["tax_type"],
+            "accountType":  a["account_type"],
+            "createdAt":    a["created_at"],
+            "holdings":     holdings,
+            "transactions": transactions,
         })
 
+    # ── Categories + Subcategories ────────────────────────────────────────────
+    cat_rows = con.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    categories = []
+    for c in cat_rows:
+        sub_rows = con.execute(
+            "SELECT * FROM subcategories WHERE category_id = ? ORDER BY name",
+            (c["id"],)
+        ).fetchall()
+        categories.append({
+            "id":            c["id"],
+            "name":          c["name"],
+            "subcategories": [{"id": s["id"], "name": s["name"]} for s in sub_rows],
+        })
+
+    # ── Payees ────────────────────────────────────────────────────────────────
+    payee_rows = con.execute(
+        "SELECT p.*, s.category_id "
+        "FROM payees p "
+        "LEFT JOIN subcategories s ON s.id = p.subcategory_id "
+        "ORDER BY p.name"
+    ).fetchall()
+    payees = []
+    for p in payee_rows:
+        payee = {"id": p["id"], "name": p["name"]}
+        if p["subcategory_id"]:
+            payee["subcategoryId"] = p["subcategory_id"]
+        if p["category_id"]:
+            payee["categoryId"] = p["category_id"]
+        payees.append(payee)
+
     con.close()
-    return {"accounts": accounts}
+    return {"accounts": accounts, "categories": categories, "payees": payees}
 
 
 def save_state(data):
-    accounts = data.get("accounts", [])
+    accounts    = data.get("accounts",   [])
+    categories  = data.get("categories", [])
+    payees      = data.get("payees",     [])
+
     con = sqlite3.connect(DB_PATH)
     con.execute("PRAGMA foreign_keys=ON")
     try:
         with con:
+            # ── Delete in FK-safe order ────────────────────────────────────
+            con.execute("DELETE FROM transactions")
+            con.execute("DELETE FROM payees")
+            con.execute("DELETE FROM subcategories")
+            con.execute("DELETE FROM categories")
             con.execute("DELETE FROM holdings")
             con.execute("DELETE FROM accounts")
+
+            # ── Categories + Subcategories (must come before transactions) ─
+            for cat in categories:
+                con.execute(
+                    "INSERT INTO categories (id, name) VALUES (?, ?)",
+                    (cat["id"], cat["name"])
+                )
+                for sub in cat.get("subcategories", []):
+                    con.execute(
+                        "INSERT INTO subcategories (id, category_id, name) VALUES (?, ?, ?)",
+                        (sub["id"], cat["id"], sub["name"])
+                    )
+
+            # ── Payees (after subcategories) ───────────────────────────────
+            for p in payees:
+                con.execute(
+                    "INSERT INTO payees (id, name, subcategory_id) VALUES (?, ?, ?)",
+                    (p["id"], p["name"], p.get("subcategoryId"))
+                )
+
+            # ── Accounts + Holdings + Transactions ─────────────────────────
             for acc in accounts:
                 con.execute(
                     "INSERT INTO accounts (id, name, tax_type, account_type, created_at) "
@@ -119,6 +228,21 @@ def save_state(data):
                             h.get("origin"),
                             h.get("assetType"),
                             idx,
+                        )
+                    )
+                for t in acc.get("transactions", []):
+                    con.execute(
+                        "INSERT INTO transactions "
+                        "(id, account_id, date, payee_name, subcategory_id, tag, amount) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            t["id"],
+                            acc["id"],
+                            t["date"],
+                            t["payeeName"],
+                            t.get("subcategoryId"),
+                            t.get("tag") or None,
+                            t["amount"],
                         )
                     )
     finally:
