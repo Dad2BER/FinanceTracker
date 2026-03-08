@@ -1,19 +1,11 @@
 import { getAccounts, getAccount, subscribe, initState } from "./state.js";
 import { fetchQuotes } from "./services/prices.js";
-import { loadApiKey, saveApiKey, loadAvKey, saveAvKey } from "./services/storage.js";
-import {
-  getStoredHandle,
-  storeHandle,
-  clearStoredHandle,
-  requestPermission,
-  readFile,
-  writeFile,
-  fileState,
-} from "./services/fileStorage.js";
+import { loadData, loadApiKey, saveApiKey, loadAvKey, saveAvKey } from "./services/storage.js";
 import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
 
 // ── View State ────────────────────────────────────────────────────────────────
+// { page: "accounts" } | { page: "account-detail", accountId: string }
 let view = { page: "accounts" };
 
 // ── Price State ───────────────────────────────────────────────────────────────
@@ -205,165 +197,24 @@ async function completeBootstrap(data) {
   }
 }
 
-// ── File Picker Screen ────────────────────────────────────────────────────────
-function showFileError(cardEl, message) {
-  let errEl = cardEl.querySelector(".file-error");
-  if (!errEl) {
-    errEl = document.createElement("p");
-    errEl.className = "file-error field-error";
-    errEl.style.cssText = "margin-top:1rem;text-align:center;";
-    cardEl.appendChild(errEl);
-  }
-  errEl.textContent = message;
-}
-
-async function openExistingFile(cardEl) {
+// ── Entry Point ───────────────────────────────────────────────────────────────
+(async () => {
+  let data;
   try {
-    const [handle] = await window.showOpenFilePicker({
-      types: [{ description: "JSON", accept: { "application/json": [".json"] } }],
-      multiple: false,
-    });
-    let data;
-    try {
-      data = await readFile(handle);
-    } catch (e) {
-      showFileError(cardEl, `Could not read file: ${e.message}`);
-      return;
-    }
-    await storeHandle(handle);
-    fileState.handle = handle;
-    await completeBootstrap(data);
+    data = await loadData();
   } catch (e) {
-    if (e.name === "AbortError") return;
-    showFileError(cardEl, `Could not open file: ${e.message}`);
-  }
-}
-
-async function createNewFile(cardEl) {
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: "finance-tracker.json",
-      types: [{ description: "JSON", accept: { "application/json": [".json"] } }],
-    });
-    const emptyData = { accounts: [] };
-    await writeFile(handle, emptyData);
-    await storeHandle(handle);
-    fileState.handle = handle;
-    await completeBootstrap(emptyData);
-  } catch (e) {
-    if (e.name === "AbortError") return;
-    showFileError(cardEl, `Could not create file: ${e.message}`);
-  }
-}
-
-async function showFilePickerScreen() {
-  if (!window.showOpenFilePicker) {
     container.innerHTML = `
       <div class="key-screen">
         <div class="key-card">
           <h1 class="key-title">Finance Tracker</h1>
           <p class="key-subtitle" style="color:var(--color-danger)">
-            This app requires a Chromium-based browser (Chrome or Edge)
-            to store data in a local file.
+            Could not connect to the local server.<br>
+            Make sure <code>server.py</code> is running on port 3000.
           </p>
+          <p class="key-hint" style="margin-top:1rem">${e.message}</p>
         </div>
       </div>`;
     return;
   }
-
-  const storedHandle = await getStoredHandle();
-
-  container.innerHTML = "";
-  const screen = document.createElement("div");
-  screen.className = "key-screen";
-
-  if (storedHandle) {
-    // Return session — offer to resume with the stored file
-    const fileName = storedHandle.name || "your data file";
-    screen.innerHTML = `
-      <div class="key-card">
-        <h1 class="key-title">Finance Tracker</h1>
-        <p class="key-subtitle">Resume with your saved data file.</p>
-        <div class="key-actions">
-          <button class="btn btn-primary" id="file-continue">Continue with ${fileName}</button>
-        </div>
-        <p class="key-hint" style="margin-top:1rem">
-          <a href="#" id="file-open-different" style="color:var(--color-muted);font-size:.85rem">Open a different file</a>
-          &nbsp;·&nbsp;
-          <a href="#" id="file-create-new" style="color:var(--color-muted);font-size:.85rem">Create new file</a>
-        </p>
-      </div>`;
-    container.appendChild(screen);
-
-    const card = screen.querySelector(".key-card");
-
-    screen.querySelector("#file-continue").addEventListener("click", async () => {
-      let ok;
-      try {
-        ok = await requestPermission(storedHandle);
-      } catch {
-        ok = false;
-      }
-      if (!ok) {
-        showFileError(card, "Permission denied. Click the button to try again.");
-        return;
-      }
-      let data;
-      try {
-        data = await readFile(storedHandle);
-      } catch (e) {
-        if (e.name === "NotFoundError" || e.name === "NotReadableError") {
-          await clearStoredHandle();
-          showFileError(card, "File not found — it may have been moved or deleted. Choose a different file.");
-        } else {
-          showFileError(card, `Could not read file: ${e.message}`);
-        }
-        return;
-      }
-      fileState.handle = storedHandle;
-      await completeBootstrap(data);
-    });
-
-    screen.querySelector("#file-open-different").addEventListener("click", async (e) => {
-      e.preventDefault();
-      await openExistingFile(card);
-    });
-
-    screen.querySelector("#file-create-new").addEventListener("click", async (e) => {
-      e.preventDefault();
-      await createNewFile(card);
-    });
-
-  } else {
-    // First session — let user open or create a file
-    screen.innerHTML = `
-      <div class="key-card">
-        <h1 class="key-title">Finance Tracker</h1>
-        <p class="key-subtitle">
-          Your portfolio data is saved to a file on your computer —
-          never uploaded anywhere.
-        </p>
-        <div class="key-actions">
-          <button class="btn btn-secondary" id="file-open">Open existing file</button>
-          <button class="btn btn-primary" id="file-create">Create new file</button>
-        </div>
-        <p class="key-hint">Choose where to store your data to get started.</p>
-      </div>`;
-    container.appendChild(screen);
-
-    const card = screen.querySelector(".key-card");
-
-    screen.querySelector("#file-open").addEventListener("click", async () => {
-      await openExistingFile(card);
-    });
-
-    screen.querySelector("#file-create").addEventListener("click", async () => {
-      await createNewFile(card);
-    });
-  }
-}
-
-// ── Entry Point ───────────────────────────────────────────────────────────────
-(async () => {
-  await showFilePickerScreen();
+  await completeBootstrap(data);
 })();

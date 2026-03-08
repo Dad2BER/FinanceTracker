@@ -28,11 +28,12 @@ export function getAccount(id) {
   return _data.accounts.find((a) => a.id === id) || null;
 }
 
-export function addAccount(name, taxType) {
+export function addAccount(name, taxType, accountType = "asset") {
   const account = {
     id: generateId(),
     name: name.trim(),
     taxType,
+    accountType,
     createdAt: new Date().toISOString(),
     holdings: [],
   };
@@ -42,11 +43,11 @@ export function addAccount(name, taxType) {
   return account;
 }
 
-export function updateAccount(id, name, taxType) {
+export function updateAccount(id, name, taxType, accountType = "asset") {
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) =>
-      a.id === id ? { ...a, name: name.trim(), taxType } : a
+      a.id === id ? { ...a, name: name.trim(), taxType, accountType } : a
     ),
   };
   saveData(_data);

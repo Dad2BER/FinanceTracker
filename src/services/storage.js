@@ -1,14 +1,27 @@
-import { fileState, writeFile } from "./fileStorage.js";
-
 const API_KEY_STORAGE = "financetracker_apikey";
-const AV_KEY_STORAGE = "financetracker_avkey";
+const AV_KEY_STORAGE  = "financetracker_avkey";
+
+// ── Data persistence via REST API ─────────────────────────────────────────────
+
+export async function loadData() {
+  const res = await fetch("/api/data");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
 export function saveData(data) {
-  if (!fileState.handle) return;
-  writeFile(fileState.handle, data).catch((err) =>
-    console.error("[saveData] write failed:", err)
-  );
+  fetch("/api/data", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => {
+    if (!res.ok) console.error("[saveData] POST /api/data failed:", res.status);
+  }).catch((err) => {
+    console.error("[saveData] network error:", err);
+  });
 }
+
+// ── API key persistence (localStorage) ───────────────────────────────────────
 
 export function loadApiKey() {
   return window.localStorage.getItem(API_KEY_STORAGE) || "";
