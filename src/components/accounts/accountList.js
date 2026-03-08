@@ -15,7 +15,8 @@ export function renderAccountList(
   pricesError,
   onSelectAccount,
   onRefresh,
-  onUpdateKey
+  onUpdateKey,
+  onSettings
 ) {
   container.innerHTML = "";
 
@@ -28,6 +29,7 @@ export function renderAccountList(
       <div class="header-actions">
         <button class="btn btn-ghost btn-sm" id="refresh-btn" title="Refresh prices">&#8635; Refresh Prices</button>
         <button class="btn btn-ghost btn-sm" id="update-key-btn" title="Update API key">&#128273; API Key</button>
+        <button class="btn btn-ghost btn-sm" id="settings-btn" title="Settings">&#9881; Settings</button>
         <button class="btn btn-primary" id="add-account-btn">+ Add Account</button>
       </div>
     </div>
@@ -126,10 +128,12 @@ export function renderAccountList(
       const taxCell = document.createElement("td");
       taxCell.appendChild(createTaxTypeBadge(account.taxType));
 
-      // Holdings count cell
+      // Holdings / transactions count cell
       const countCell = document.createElement("td");
       countCell.className = "align-right dim";
-      countCell.textContent = account.holdings.length;
+      countCell.textContent = account.accountType === "liability"
+        ? (account.transactions?.length ?? 0)
+        : account.holdings.length;
 
       tr.appendChild(nameCell);
       tr.appendChild(accountTypeCell);
@@ -148,4 +152,5 @@ export function renderAccountList(
   header.querySelector("#add-account-btn").addEventListener("click", () => showAccountForm());
   header.querySelector("#refresh-btn").addEventListener("click", onRefresh);
   header.querySelector("#update-key-btn").addEventListener("click", onUpdateKey);
+  if (onSettings) header.querySelector("#settings-btn").addEventListener("click", onSettings);
 }

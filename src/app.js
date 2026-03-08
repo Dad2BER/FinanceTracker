@@ -1,11 +1,16 @@
-import { getAccounts, getAccount, subscribe, initState } from "./state.js";
+import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState } from "./state.js";
 import { fetchQuotes } from "./services/prices.js";
 import { loadData, loadApiKey, saveApiKey, loadAvKey, saveAvKey } from "./services/storage.js";
 import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
+import { renderTransactionList } from "./components/liability/transactionList.js";
+import { renderSettingsView } from "./components/settings/settingsView.js";
 
 // ── View State ────────────────────────────────────────────────────────────────
-// { page: "accounts" } | { page: "account-detail", accountId: string }
+// { page: "accounts" }
+// | { page: "account-detail", accountId: string }
+// | { page: "liability-detail", accountId: string }
+// | { page: "settings" }
 let view = { page: "accounts" };
 
 // ── Price State ───────────────────────────────────────────────────────────────
@@ -112,11 +117,19 @@ function render() {
       prices,
       pricesLoading,
       pricesError,
-      (accountId) => navigateTo({ page: "account-detail", accountId }),
+      (accountId) => {
+        const account = getAccount(accountId);
+        navigateTo(
+          account?.accountType === "liability"
+            ? { page: "liability-detail", accountId }
+            : { page: "account-detail", accountId }
+        );
+      },
       () => loadPrices(symbols),
-      () => showApiKeyScreen(true)
+      () => showApiKeyScreen(true),
+      () => navigateTo({ page: "settings" })
     );
-  } else {
+  } else if (view.page === "account-detail") {
     const account = getAccount(view.accountId);
     if (!account) {
       navigateTo({ page: "accounts" });
@@ -132,6 +145,26 @@ function render() {
       () => navigateTo({ page: "accounts" }),
       () => loadPrices(symbols),
       () => showApiKeyScreen(true)
+    );
+  } else if (view.page === "liability-detail") {
+    const account = getAccount(view.accountId);
+    if (!account) {
+      navigateTo({ page: "accounts" });
+      return;
+    }
+    renderTransactionList(
+      container,
+      account,
+      getCategories(),
+      getPayees(),
+      () => navigateTo({ page: "accounts" })
+    );
+  } else if (view.page === "settings") {
+    renderSettingsView(
+      container,
+      getCategories(),
+      getPayees(),
+      () => navigateTo({ page: "accounts" })
     );
   }
 }
@@ -169,6 +202,7 @@ async function loadPrices(symbols) {
 }
 
 function loadPricesForCurrentView() {
+  if (view.page === "liability-detail" || view.page === "settings") return;
   if (view.page === "accounts") {
     loadPrices(uniqueSymbols(getAccounts()));
   } else {

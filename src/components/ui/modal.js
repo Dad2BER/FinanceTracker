@@ -26,8 +26,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 export const Modal = {
-  open(contentEl, onClose) {
+  open(contentEl, onClose, options = {}) {
     card.innerHTML = "";
+    card.classList.toggle("modal-card-wide", !!options.wide);
     card.appendChild(contentEl);
     _onClose = onClose || null;
     document.body.appendChild(backdrop);
