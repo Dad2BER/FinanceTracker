@@ -69,6 +69,7 @@ export function renderAccountList(
         <thead>
           <tr>
             <th>Name</th>
+            <th>Type</th>
             <th>Tax Type</th>
             <th class="align-right">Holdings</th>
             <th class="align-right">Total Value</th>
@@ -115,6 +116,12 @@ export function renderAccountList(
       nameCell.className = "symbol-cell";
       nameCell.textContent = account.name;
 
+      // Account type cell (Asset / Liability)
+      const accountTypeCell = document.createElement("td");
+      const accountTypeLabel = account.accountType === "liability" ? "Liability" : "Asset";
+      accountTypeCell.textContent = accountTypeLabel;
+      accountTypeCell.className = account.accountType === "liability" ? "dim" : "";
+
       // Tax type cell with badge
       const taxCell = document.createElement("td");
       taxCell.appendChild(createTaxTypeBadge(account.taxType));
@@ -125,6 +132,7 @@ export function renderAccountList(
       countCell.textContent = account.holdings.length;
 
       tr.appendChild(nameCell);
+      tr.appendChild(accountTypeCell);
       tr.appendChild(taxCell);
       tr.appendChild(countCell);
       tr.appendChild(valueCell);

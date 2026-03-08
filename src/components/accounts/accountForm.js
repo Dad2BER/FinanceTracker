@@ -2,6 +2,10 @@ import { Modal } from "../ui/modal.js";
 import { addAccount, updateAccount } from "../../state.js";
 
 const TAX_TYPES = ["Taxable", "Tax-Free", "Tax-Deferred"];
+const ACCOUNT_TYPES = [
+  { value: "asset",     label: "Asset" },
+  { value: "liability", label: "Liability" },
+];
 
 export function showAccountForm(account = null) {
   const isEdit = account !== null;
@@ -24,6 +28,15 @@ export function showAccountForm(account = null) {
         ).join("")}
       </select>
     </div>
+    <div class="form-group">
+      <label for="af-account-type">Account Type</label>
+      <select id="af-account-type" class="form-select">
+        ${ACCOUNT_TYPES.map(
+          ({ value, label }) =>
+            `<option value="${value}" ${isEdit && account.accountType === value ? "selected" : ""}>${label}</option>`
+        ).join("")}
+      </select>
+    </div>
     <div class="form-actions">
       <button class="btn btn-secondary" id="af-cancel">Cancel</button>
       <button class="btn btn-primary" id="af-submit">${isEdit ? "Save" : "Add"}</button>
@@ -32,6 +45,7 @@ export function showAccountForm(account = null) {
 
   const nameInput = el.querySelector("#af-name");
   const taxSelect = el.querySelector("#af-tax");
+  const accountTypeSelect = el.querySelector("#af-account-type");
   const nameErr = el.querySelector("#af-name-err");
 
   el.querySelector("#af-cancel").addEventListener("click", () => Modal.close());
@@ -45,10 +59,11 @@ export function showAccountForm(account = null) {
     }
     nameErr.textContent = "";
     const taxType = taxSelect.value;
+    const accountType = accountTypeSelect.value;
     if (isEdit) {
-      updateAccount(account.id, name, taxType);
+      updateAccount(account.id, name, taxType, accountType);
     } else {
-      addAccount(name, taxType);
+      addAccount(name, taxType, accountType);
     }
     Modal.close();
   });
