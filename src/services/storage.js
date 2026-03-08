@@ -1,23 +1,13 @@
-const STORAGE_KEY = "financetracker_v1";
+import { fileState, writeFile } from "./fileStorage.js";
+
 const API_KEY_STORAGE = "financetracker_apikey";
 const AV_KEY_STORAGE = "financetracker_avkey";
 
-export function loadData() {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { accounts: [] };
-    return JSON.parse(raw);
-  } catch {
-    return { accounts: [] };
-  }
-}
-
 export function saveData(data) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-export function clearData() {
-  window.localStorage.removeItem(STORAGE_KEY);
+  if (!fileState.handle) return;
+  writeFile(fileState.handle, data).catch((err) =>
+    console.error("[saveData] write failed:", err)
+  );
 }
 
 export function loadApiKey() {

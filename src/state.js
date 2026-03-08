@@ -1,8 +1,12 @@
-import { loadData, saveData } from "./services/storage.js";
+import { saveData } from "./services/storage.js";
 import { generateId } from "./utils/uuid.js";
 
-// Central reactive state
-let _data = loadData();
+// Central reactive state — initialized by app.js via initState() after async file load
+let _data = { accounts: [] };
+
+export function initState(data) {
+  _data = data?.accounts ? data : { accounts: [] };
+}
 let _listeners = [];
 
 function notify() {
