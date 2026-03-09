@@ -4,7 +4,14 @@ import {
   addCategory, updateCategory, deleteCategory,
   addSubcategory, updateSubcategory, deleteSubcategory,
   addPayee, updatePayee, deletePayee,
+  getCategories, getPayees,
 } from "../../state.js";
+
+// ── Module-level selection state (persists across re-renders) ─────────────────
+let _selectedCategoryId = null;
+let _selectedSubcategoryId = null;
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
 function escHtml(str) {
   return String(str)
@@ -13,8 +20,6 @@ function escHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-
-// ── Small helpers to open a prompt modal ─────────────────────────────────────
 
 function showNamePrompt({ title, label, initialValue = "", onSave }) {
   const el = document.createElement("div");
@@ -59,7 +64,6 @@ function showPayeeEditPrompt({ initialName = "", initialSubcategoryId = null, ca
       .join("");
   }
 
-  // Resolve initial category from subcategoryId
   let initCatId = null;
   if (initialSubcategoryId) {
     for (const cat of categories) {
@@ -99,7 +103,6 @@ function showPayeeEditPrompt({ initialName = "", initialSubcategoryId = null, ca
 
   const catSel = el.querySelector("#pe-cat");
   const subGroup = el.querySelector("#pe-sub-group");
-  let selectedSubId = initialSubcategoryId;
 
   catSel.addEventListener("change", () => {
     const catId = catSel.value;
@@ -107,38 +110,44 @@ function showPayeeEditPrompt({ initialName = "", initialSubcategoryId = null, ca
       subGroup.style.display = "";
       const subSel = el.querySelector("#pe-sub");
       subSel.innerHTML = `<option value="">— None —</option>${buildSubOptions(catId, null)}`;
-      selectedSubId = null;
     } else {
       subGroup.style.display = "none";
-      selectedSubId = null;
     }
   });
-
-  const subSel = el.querySelector("#pe-sub");
-  if (subSel) {
-    subSel.addEventListener("change", () => {
-      selectedSubId = subSel.value || null;
-    });
-  }
 
   el.querySelector("#pe-cancel").addEventListener("click", () => Modal.close());
   el.querySelector("#pe-save").addEventListener("click", () => {
     const name = el.querySelector("#pe-name").value.trim();
     if (!name) { el.querySelector("#pe-err").textContent = "Name is required."; return; }
-    // Read current subSel value (it may have changed)
-    const currentSubSel = el.querySelector("#pe-sub");
-    const finalSubId = currentSubSel ? currentSubSel.value || null : null;
+    const subSel = el.querySelector("#pe-sub");
+    const finalSubId = subSel ? subSel.value || null : null;
     Modal.close();
     onSave(name, finalSubId);
   });
 
-  Modal.open(el, null, { wide: false });
+  Modal.open(el);
   setTimeout(() => el.querySelector("#pe-name").focus(), 50);
 }
 
 // ── Main View ─────────────────────────────────────────────────────────────────
 
 export function renderSettingsView(container, categories, payees, onBack) {
+  // ── Validate & default selection state ──────────────────────────────────────
+  if (!categories.find((c) => c.id === _selectedCategoryId)) {
+    _selectedCategoryId = categories[0]?.id ?? null;
+  }
+  const selectedCategory = categories.find((c) => c.id === _selectedCategoryId) ?? null;
+
+  if (!selectedCategory?.subcategories.find((s) => s.id === _selectedSubcategoryId)) {
+    _selectedSubcategoryId = selectedCategory?.subcategories[0]?.id ?? null;
+  }
+  const selectedSub = selectedCategory?.subcategories.find((s) => s.id === _selectedSubcategoryId) ?? null;
+
+  // Helper: re-render this view with fresh state (called after selection changes)
+  function rerender() {
+    renderSettingsView(container, getCategories(), getPayees(), onBack);
+  }
+
   container.innerHTML = "";
 
   // ── Header ──────────────────────────────────────────────────────────────────
@@ -155,233 +164,237 @@ export function renderSettingsView(container, categories, payees, onBack) {
   container.appendChild(header);
   header.querySelector("#back-btn").addEventListener("click", onBack);
 
-  // ── Section A: Categories & Subcategories ───────────────────────────────────
-  renderCategorySection(container, categories);
+  // ── Category Toolbar ────────────────────────────────────────────────────────
+  const toolbar = document.createElement("div");
+  toolbar.className = "settings-toolbar";
 
-  // ── Section B: Payees ───────────────────────────────────────────────────────
-  renderPayeeSection(container, categories, payees);
-}
+  const catOptions = categories
+    .map((c) => `<option value="${escHtml(c.id)}" ${c.id === _selectedCategoryId ? "selected" : ""}>${escHtml(c.name)}</option>`)
+    .join("");
 
-// ── Category Section ──────────────────────────────────────────────────────────
-
-function renderCategorySection(container, categories) {
-  const section = document.createElement("div");
-  section.className = "settings-section";
-
-  const sectionHeader = document.createElement("div");
-  sectionHeader.className = "settings-section-header";
-  sectionHeader.innerHTML = `
-    <h3 class="section-title" style="margin-bottom:0">Categories &amp; Subcategories</h3>
+  toolbar.innerHTML = `
+    <select class="form-select settings-cat-select" id="cat-select" ${categories.length === 0 ? "disabled" : ""}>
+      ${categories.length === 0 ? '<option value="">No categories</option>' : catOptions}
+    </select>
     <button class="btn btn-primary btn-sm" id="add-cat-btn">+ Add Category</button>
+    <button class="btn btn-secondary btn-sm" id="rename-cat-btn" ${!selectedCategory ? "disabled" : ""}>&#9998; Rename</button>
+    <button class="btn btn-secondary btn-sm" id="delete-cat-btn" ${!selectedCategory ? "disabled" : ""} style="color:var(--color-danger)">&#128465; Delete</button>
   `;
-  section.appendChild(sectionHeader);
+  container.appendChild(toolbar);
 
-  sectionHeader.querySelector("#add-cat-btn").addEventListener("click", () => {
+  toolbar.querySelector("#cat-select").addEventListener("change", (e) => {
+    _selectedCategoryId = e.target.value;
+    _selectedSubcategoryId = null;
+    rerender();
+  });
+
+  toolbar.querySelector("#add-cat-btn").addEventListener("click", () => {
     showNamePrompt({
       title: "Add Category",
       label: "Category Name",
-      onSave: (name) => addCategory(name),
+      onSave: (name) => {
+        const cat = addCategory(name);
+        _selectedCategoryId = cat.id;
+        _selectedSubcategoryId = null;
+      },
     });
   });
 
-  if (categories.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "dim";
-    empty.style.fontSize = "0.88rem";
-    empty.style.padding = "0.75rem 0";
-    empty.textContent = "No categories yet. Add one to get started.";
-    section.appendChild(empty);
-    container.appendChild(section);
-    return;
-  }
-
-  const tableWrapper = document.createElement("div");
-  tableWrapper.className = "table-wrapper";
-  tableWrapper.innerHTML = `
-    <table class="holdings-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th class="actions-cell"></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  `;
-
-  const tbody = tableWrapper.querySelector("tbody");
-
-  categories.forEach((cat) => {
-    // Category row
-    const catRow = document.createElement("tr");
-    catRow.innerHTML = `
-      <td><strong>${escHtml(cat.name)}</strong></td>
-      <td class="actions-cell">
-        <button class="icon-btn" title="Rename">&#9998;</button>
-        <button class="icon-btn icon-btn-danger" title="Delete">&#128465;</button>
-      </td>
-    `;
-    const [renameBtn, deleteBtn] = catRow.querySelectorAll("button");
-    renameBtn.addEventListener("click", () => {
+  if (selectedCategory) {
+    toolbar.querySelector("#rename-cat-btn").addEventListener("click", () => {
       showNamePrompt({
         title: "Rename Category",
         label: "Category Name",
-        initialValue: cat.name,
-        onSave: (name) => updateCategory(cat.id, name),
+        initialValue: selectedCategory.name,
+        onSave: (name) => updateCategory(selectedCategory.id, name),
       });
     });
-    deleteBtn.addEventListener("click", () => {
+
+    toolbar.querySelector("#delete-cat-btn").addEventListener("click", () => {
       showConfirmDialog({
         title: "Delete Category",
-        message: `Delete "${cat.name}" and all its subcategories? Payees using these subcategories will lose their mapping.`,
-        onConfirm: () => deleteCategory(cat.id),
+        message: `Delete "${selectedCategory.name}" and all its subcategories? Payees using these subcategories will lose their mapping.`,
+        onConfirm: () => {
+          _selectedCategoryId = null;
+          _selectedSubcategoryId = null;
+          deleteCategory(selectedCategory.id);
+        },
       });
     });
-    tbody.appendChild(catRow);
+  }
 
-    // Subcategory rows
-    cat.subcategories.forEach((sub) => {
-      const subRow = document.createElement("tr");
-      subRow.className = "settings-subrow";
-      subRow.innerHTML = `
-        <td>${escHtml(sub.name)}</td>
-        <td class="actions-cell">
-          <button class="icon-btn" title="Rename">&#9998;</button>
-          <button class="icon-btn icon-btn-danger" title="Delete">&#128465;</button>
-        </td>
-      `;
-      const [renSub, delSub] = subRow.querySelectorAll("button");
-      renSub.addEventListener("click", () => {
-        showNamePrompt({
-          title: "Rename Subcategory",
-          label: "Subcategory Name",
-          initialValue: sub.name,
-          onSave: (name) => updateSubcategory(cat.id, sub.id, name),
-        });
-      });
-      delSub.addEventListener("click", () => {
-        showConfirmDialog({
-          title: "Delete Subcategory",
-          message: `Delete subcategory "${sub.name}"? Payees using this subcategory will lose their mapping.`,
-          onConfirm: () => deleteSubcategory(cat.id, sub.id),
-        });
-      });
-      tbody.appendChild(subRow);
-    });
-
-    // Inline add subcategory row
-    const addSubRow = document.createElement("tr");
-    addSubRow.innerHTML = `
-      <td colspan="2" style="padding: 0.4rem 1rem;">
-        <div style="display:flex;gap:0.5rem;align-items:center;padding-left:1.5rem">
-          <input type="text" class="inline-add-input" placeholder="+ Add subcategory…" maxlength="100">
-          <button class="btn btn-secondary btn-sm" style="white-space:nowrap">Add</button>
-        </div>
-      </td>
-    `;
-    const subInput = addSubRow.querySelector("input");
-    const subAddBtn = addSubRow.querySelector("button");
-    function submitSubcategory() {
-      const name = subInput.value.trim();
-      if (!name) return;
-      addSubcategory(cat.id, name);
-      subInput.value = "";
-    }
-    subAddBtn.addEventListener("click", submitSubcategory);
-    subInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitSubcategory(); });
-    tbody.appendChild(addSubRow);
-  });
-
-  tableWrapper.appendChild(tableWrapper.querySelector("tbody")); // no-op, already appended
-  section.appendChild(tableWrapper);
-  container.appendChild(section);
-}
-
-// ── Payee Section ─────────────────────────────────────────────────────────────
-
-function renderPayeeSection(container, categories, payees) {
-  const section = document.createElement("div");
-  section.className = "settings-section";
-
-  const sectionHeader = document.createElement("div");
-  sectionHeader.className = "settings-section-header";
-  sectionHeader.innerHTML = `
-    <h3 class="section-title" style="margin-bottom:0">Payees</h3>
-  `;
-  section.appendChild(sectionHeader);
-
-  if (payees.length === 0) {
+  // ── Empty state (no categories) ─────────────────────────────────────────────
+  if (!selectedCategory) {
     const empty = document.createElement("p");
     empty.className = "dim";
-    empty.style.fontSize = "0.88rem";
-    empty.style.padding = "0.75rem 0";
-    empty.textContent = "No payees yet. They are added automatically when you record transactions.";
-    section.appendChild(empty);
-    container.appendChild(section);
+    empty.style.cssText = "font-size:0.88rem;padding:1rem 0;";
+    empty.textContent = "No categories yet. Add one above to get started.";
+    container.appendChild(empty);
     return;
   }
 
-  const tableWrapper = document.createElement("div");
-  tableWrapper.className = "table-wrapper";
-  tableWrapper.innerHTML = `
-    <table class="holdings-table">
-      <thead>
-        <tr>
-          <th>Payee</th>
-          <th>Category</th>
-          <th>Subcategory</th>
-          <th class="actions-cell"></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  `;
+  // ── Two-panel layout ────────────────────────────────────────────────────────
+  const twoPanel = document.createElement("div");
+  twoPanel.className = "settings-two-panel";
+  container.appendChild(twoPanel);
 
-  const tbody = tableWrapper.querySelector("tbody");
+  // ── LEFT: Subcategory Tabs ──────────────────────────────────────────────────
+  const tabsPanel = document.createElement("div");
+  tabsPanel.className = "settings-tabs-panel";
+  twoPanel.appendChild(tabsPanel);
 
-  payees.forEach((payee) => {
-    let catName = "—";
-    let subName = "—";
-    if (payee.subcategoryId) {
-      for (const cat of categories) {
-        const sub = cat.subcategories.find((s) => s.id === payee.subcategoryId);
-        if (sub) { catName = cat.name; subName = sub.name; break; }
-      }
-    }
+  const tabsLabel = document.createElement("div");
+  tabsLabel.className = "settings-tabs-label";
+  tabsLabel.textContent = "Subcategories";
+  tabsPanel.appendChild(tabsLabel);
 
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="symbol-cell">${escHtml(payee.name)}</td>
-      <td class="dim">${escHtml(catName)}</td>
-      <td class="dim">${escHtml(subName)}</td>
-      <td class="actions-cell">
-        <button class="icon-btn" title="Edit">&#9998;</button>
+  const tabsList = document.createElement("div");
+  tabsList.style.cssText = "flex:1;overflow-y:auto;";
+  tabsPanel.appendChild(tabsList);
+
+  selectedCategory.subcategories.forEach((sub) => {
+    const isActive = sub.id === _selectedSubcategoryId;
+    const tab = document.createElement("div");
+    tab.className = `settings-tab-item${isActive ? " active" : ""}`;
+    tab.innerHTML = `
+      <span class="settings-tab-name">${escHtml(sub.name)}</span>
+      <span class="settings-tab-actions">
+        <button class="icon-btn" title="Rename">&#9998;</button>
         <button class="icon-btn icon-btn-danger" title="Delete">&#128465;</button>
-      </td>
+      </span>
     `;
 
-    const [editBtn, deleteBtn] = tr.querySelectorAll("button");
-
-    editBtn.addEventListener("click", () => {
-      showPayeeEditPrompt({
-        initialName: payee.name,
-        initialSubcategoryId: payee.subcategoryId || null,
-        categories,
-        onSave: (name, subcategoryId) => updatePayee(payee.id, name, subcategoryId),
-      });
+    // Click on the tab (but not the action buttons) → select it
+    tab.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      _selectedSubcategoryId = sub.id;
+      rerender();
     });
 
-    deleteBtn.addEventListener("click", () => {
+    const [renBtn, delBtn] = tab.querySelectorAll("button");
+    renBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showNamePrompt({
+        title: "Rename Subcategory",
+        label: "Subcategory Name",
+        initialValue: sub.name,
+        onSave: (name) => updateSubcategory(selectedCategory.id, sub.id, name),
+      });
+    });
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
       showConfirmDialog({
-        title: "Delete Payee",
-        message: `Delete payee "${payee.name}"? This will not affect existing transactions.`,
-        onConfirm: () => deletePayee(payee.id),
+        title: "Delete Subcategory",
+        message: `Delete "${sub.name}"? Payees using this subcategory will lose their mapping.`,
+        onConfirm: () => {
+          if (_selectedSubcategoryId === sub.id) _selectedSubcategoryId = null;
+          deleteSubcategory(selectedCategory.id, sub.id);
+        },
       });
     });
 
-    tbody.appendChild(tr);
+    tabsList.appendChild(tab);
   });
 
-  section.appendChild(tableWrapper);
-  container.appendChild(section);
+  // Inline add subcategory row at bottom of left panel
+  const tabAddRow = document.createElement("div");
+  tabAddRow.className = "settings-tab-add";
+  tabAddRow.innerHTML = `
+    <input type="text" class="inline-add-input" placeholder="New subcategory…" maxlength="100">
+    <button class="btn btn-secondary btn-sm" style="white-space:nowrap">Add</button>
+  `;
+  const subInput = tabAddRow.querySelector("input");
+  const subAddBtn = tabAddRow.querySelector("button");
+  function submitNewSubcategory() {
+    const name = subInput.value.trim();
+    if (!name) return;
+    const sub = addSubcategory(selectedCategory.id, name);
+    _selectedSubcategoryId = sub.id;
+    subInput.value = "";
+  }
+  subAddBtn.addEventListener("click", submitNewSubcategory);
+  subInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitNewSubcategory(); });
+  tabsPanel.appendChild(tabAddRow);
+
+  // ── RIGHT: Payee Panel ──────────────────────────────────────────────────────
+  const payeePanel = document.createElement("div");
+  payeePanel.className = "settings-payee-panel";
+  twoPanel.appendChild(payeePanel);
+
+  // Header
+  const payeeHeader = document.createElement("div");
+  payeeHeader.className = "settings-payee-header";
+  const headerLabel = selectedSub
+    ? `Payees <span style="font-weight:400;text-transform:none;letter-spacing:0">— ${escHtml(selectedSub.name)}</span>`
+    : "Payees";
+  payeeHeader.innerHTML = `<span>${headerLabel}</span>`;
+  payeePanel.appendChild(payeeHeader);
+
+  if (!selectedSub) {
+    // No subcategory selected
+    const hint = document.createElement("div");
+    hint.className = "settings-payee-empty";
+    hint.textContent = selectedCategory.subcategories.length === 0
+      ? "Add subcategories on the left, then payees will appear here."
+      : "Select a subcategory on the left to see its payees.";
+    payeePanel.appendChild(hint);
+    return;
+  }
+
+  // Payee rows
+  const subcategoryPayees = payees.filter((p) => p.subcategoryId === selectedSub.id);
+  const payeeListEl = document.createElement("div");
+  payeeListEl.style.cssText = "flex:1;overflow-y:auto;";
+  payeePanel.appendChild(payeeListEl);
+
+  if (subcategoryPayees.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "settings-payee-empty";
+    empty.textContent = "No payees in this subcategory yet.";
+    payeeListEl.appendChild(empty);
+  } else {
+    subcategoryPayees.forEach((payee) => {
+      const row = document.createElement("div");
+      row.className = "settings-payee-row";
+      row.innerHTML = `
+        <span class="settings-payee-name">${escHtml(payee.name)}</span>
+        <span class="settings-payee-actions">
+          <button class="icon-btn" title="Edit">&#9998;</button>
+          <button class="icon-btn icon-btn-danger" title="Delete">&#128465;</button>
+        </span>
+      `;
+      const [editBtn, delBtn] = row.querySelectorAll("button");
+      editBtn.addEventListener("click", () => {
+        showPayeeEditPrompt({
+          initialName: payee.name,
+          initialSubcategoryId: payee.subcategoryId || null,
+          categories,
+          onSave: (name, subcategoryId) => updatePayee(payee.id, name, subcategoryId),
+        });
+      });
+      delBtn.addEventListener("click", () => {
+        showConfirmDialog({
+          title: "Delete Payee",
+          message: `Delete payee "${payee.name}"? Existing transactions using this payee are not affected.`,
+          onConfirm: () => deletePayee(payee.id),
+        });
+      });
+      payeeListEl.appendChild(row);
+    });
+  }
+
+  // Add payee row at bottom of right panel
+  const payeeAddRow = document.createElement("div");
+  payeeAddRow.className = "settings-payee-add";
+  payeeAddRow.innerHTML = `
+    <button class="btn btn-secondary btn-sm" id="add-payee-btn">+ Add Payee</button>
+  `;
+  payeeAddRow.querySelector("#add-payee-btn").addEventListener("click", () => {
+    showNamePrompt({
+      title: "Add Payee",
+      label: "Payee Name",
+      onSave: (name) => addPayee(name, _selectedSubcategoryId),
+    });
+  });
+  payeePanel.appendChild(payeeAddRow);
 }
