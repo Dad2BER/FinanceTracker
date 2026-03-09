@@ -89,17 +89,25 @@ export function renderSummaryCards(container, accounts, prices, pricesLoading) {
 
   if (!isLoading) {
     for (const account of accounts) {
-      for (const holding of account.holdings) {
-        const val = holdingValue(holding, prices);
-        if (val === null) continue;
+      if (account.accountType === "liability") {
+        // Liability balance counts as cash
+        const balance = (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
+        if (balance === 0) continue;
+        byAsset["cash"] = (byAsset["cash"] || 0) + balance;
+        byTax[account.taxType] = (byTax[account.taxType] || 0) + balance;
+        total += balance;
+      } else {
+        for (const holding of account.holdings) {
+          const val = holdingValue(holding, prices);
+          if (val === null) continue;
 
-        const assetKey = holding.assetType || "other";
-        byAsset[assetKey] = (byAsset[assetKey] || 0) + val;
+          const assetKey = holding.assetType || "other";
+          byAsset[assetKey] = (byAsset[assetKey] || 0) + val;
 
-        const taxKey = account.taxType;
-        byTax[taxKey] = (byTax[taxKey] || 0) + val;
+          byTax[account.taxType] = (byTax[account.taxType] || 0) + val;
 
-        total += val;
+          total += val;
+        }
       }
     }
   }
