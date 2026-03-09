@@ -79,11 +79,11 @@ export function renderTransactionList(container, account, categories, payees, on
   // ── Balance Banner ──────────────────────────────────────────────────────────
   const totalBalance = transactions.reduce((sum, t) => sum + t.amount, 0);
   const banner = document.createElement("div");
-  banner.className = `balance-banner ${totalBalance > 0 ? "balance-owed" : "balance-clear"}`;
+  banner.className = `balance-banner ${totalBalance < 0 ? "balance-owed" : "balance-clear"}`;
   if (totalBalance > 0) {
-    banner.textContent = `Balance owed: ${formatCurrency(totalBalance)}`;
+    banner.textContent = `Credit balance: ${formatCurrency(totalBalance)}`;
   } else if (totalBalance < 0) {
-    banner.textContent = `Credit balance: ${formatCurrency(Math.abs(totalBalance))}`;
+    banner.textContent = `Balance owed: ${formatCurrency(Math.abs(totalBalance))}`;
   } else {
     banner.textContent = "Paid in full";
   }
