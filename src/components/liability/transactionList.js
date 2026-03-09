@@ -1,6 +1,7 @@
 import { deleteTransaction } from "../../state.js";
 import { showConfirmDialog } from "../ui/confirmDialog.js";
 import { showTransactionForm } from "./transactionForm.js";
+import { showImportModal } from "./transactionImport.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { showAccountForm } from "../accounts/accountForm.js";
 
@@ -59,6 +60,7 @@ export function renderTransactionList(container, account, categories, payees, on
       </div>
       <div class="header-actions">
         <button class="btn btn-ghost btn-sm" id="edit-account-btn" title="Edit account">&#9881; Edit</button>
+        <button class="btn btn-ghost btn-sm" id="import-tx-btn">&#8679; Import</button>
         <button class="btn btn-primary" id="add-tx-btn">+ Add Transaction</button>
       </div>
     </div>
@@ -67,6 +69,9 @@ export function renderTransactionList(container, account, categories, payees, on
 
   header.querySelector("#back-btn").addEventListener("click", onBack);
   header.querySelector("#edit-account-btn").addEventListener("click", () => showAccountForm(account));
+  header.querySelector("#import-tx-btn").addEventListener("click", () =>
+    showImportModal(account.id, categories, payees)
+  );
   header.querySelector("#add-tx-btn").addEventListener("click", () =>
     showTransactionForm(account.id, categories, payees, null)
   );

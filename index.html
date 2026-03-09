@@ -598,6 +598,55 @@
     }
     .inline-add-input:focus { border-color: var(--color-primary); }
 
+    /* ── Extra-Wide Modal ────────────────────────────────────────────────── */
+    .modal-card-extra-wide { max-width: 780px; }
+
+    /* ── Transaction Import ──────────────────────────────────────────────── */
+    .import-modal { min-width: 0; }
+
+    .import-preview {
+      margin: 0.75rem 0 0;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .import-preview-label {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-text-dim);
+      background: var(--color-surface-2);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .import-preview-table-wrap { overflow-x: auto; }
+    .import-preview-table-wrap .holdings-table th,
+    .import-preview-table-wrap .holdings-table td { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+
+    .import-review-wrap {
+      max-height: 340px;
+      overflow-y: auto;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 0.75rem;
+    }
+    .import-review-table th,
+    .import-review-table td { padding: 0.35rem 0.5rem; font-size: 0.85rem; }
+    .import-review-table thead th {
+      position: sticky;
+      top: 0;
+      background: var(--color-surface-2);
+      z-index: 1;
+    }
+    .imp-desc-cell {
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .import-row-skipped td { opacity: 0.35; }
+
     /* ── Responsive ──────────────────────────────────────────────────────── */
     @media (max-width: 600px) {
       .dashboard-grid { grid-template-columns: 1fr; }

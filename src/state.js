@@ -192,6 +192,37 @@ export function updateTransaction(accountId, txId, { date, payeeName, subcategor
   notify();
 }
 
+export function addTransactionsBatch(accountId, txDataArray) {
+  const newTxs = txDataArray.map(({ date, payeeName, subcategoryId, tag, amount }) => {
+    const tx = {
+      id: generateId(),
+      date,
+      payeeName,
+      amount: parseFloat(amount),
+      ...(subcategoryId ? { subcategoryId } : {}),
+      ...(tag ? { tag } : {}),
+    };
+    if (subcategoryId) {
+      const cat = _data.categories.find((c) =>
+        c.subcategories.some((s) => s.id === subcategoryId)
+      );
+      if (cat) tx.categoryId = cat.id;
+    }
+    return tx;
+  });
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) =>
+      a.id === accountId
+        ? { ...a, transactions: [...(a.transactions || []), ...newTxs] }
+        : a
+    ),
+  };
+  saveData(_data);
+  notify();
+  return newTxs;
+}
+
 export function deleteTransaction(accountId, txId) {
   _data = {
     ..._data,
