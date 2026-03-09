@@ -85,16 +85,22 @@ export function renderAccountList(
 
     // Compute totals and sort by value descending (unpriced accounts go last)
     const withTotals = accounts.map((account) => {
-      const total = (pricesLoading || prices === null)
-        ? null
-        : account.holdings.reduce((sum, h) => {
-            const p = h.assetType === "cash" ? 1 : prices[h.symbol];
-            return p !== undefined ? sum + p * h.shares : sum;
-          }, 0);
+      let total;
+      if (account.accountType === "liability") {
+        // Liability accounts: balance from transaction sum — no price fetch needed
+        total = (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
+      } else {
+        total = (pricesLoading || prices === null)
+          ? null
+          : account.holdings.reduce((sum, h) => {
+              const p = h.assetType === "cash" ? 1 : prices[h.symbol];
+              return p !== undefined ? sum + p * h.shares : sum;
+            }, 0);
+      }
       return { account, total };
     });
     if (!pricesLoading && prices !== null) {
-      withTotals.sort((a, b) => b.total - a.total);
+      withTotals.sort((a, b) => (b.total ?? -Infinity) - (a.total ?? -Infinity));
     }
 
     withTotals.forEach(({ account, total }) => {
@@ -107,6 +113,21 @@ export function renderAccountList(
         valueCell = document.createElement("td");
         valueCell.className = "align-right";
         valueCell.appendChild(createLoadingSpinner());
+      } else if (account.accountType === "liability") {
+        valueCell = document.createElement("td");
+        valueCell.className = "align-right";
+        const span = document.createElement("span");
+        span.style.fontWeight = "600";
+        if (total > 0) {
+          span.style.color = "var(--color-success)";
+          span.textContent = formatCurrency(total);
+        } else if (total < 0) {
+          span.style.color = "var(--color-danger)";
+          span.textContent = `-${formatCurrency(Math.abs(total))}`;
+        } else {
+          span.textContent = formatCurrency(0);
+        }
+        valueCell.appendChild(span);
       } else {
         valueCell = document.createElement("td");
         valueCell.className = "align-right value-cell";
