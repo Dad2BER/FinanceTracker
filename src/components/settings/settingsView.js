@@ -177,11 +177,36 @@ export function renderSettingsView(container, categories, payees, onBack) {
   `;
   container.appendChild(dbSection);
 
-  // Backup: trigger a browser download from the server endpoint
-  dbSection.querySelector("#db-backup-btn").addEventListener("click", () => {
-    const a = document.createElement("a");
-    a.href = "/api/backup";
-    a.click();
+  // Backup: fetch the DB as a blob and trigger a save-as download.
+  // Using fetch+blob avoids navigating the page (which would show binary
+  // data as garbage or a "Not Found" error in the browser).
+  dbSection.querySelector("#db-backup-btn").addEventListener("click", async () => {
+    const btn = dbSection.querySelector("#db-backup-btn");
+    btn.disabled = true;
+    btn.textContent = "⏳ Backing up…";
+    try {
+      const res = await fetch("/api/backup");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("Backup failed: " + (err.error || `HTTP ${res.status}`));
+        return;
+      }
+      const blob = await res.blob();
+      const today = new Date().toISOString().slice(0, 10);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `finance-tracker-backup-${today}.db`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("Backup failed: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "⬇ Backup";
+    }
   });
 
   // Restore: confirm → file picker → POST bytes → reload
