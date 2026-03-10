@@ -1,5 +1,6 @@
-const API_KEY_STORAGE = "financetracker_apikey";
-const AV_KEY_STORAGE  = "financetracker_avkey";
+const API_KEY_STORAGE    = "financetracker_apikey";
+const AV_KEY_STORAGE     = "financetracker_avkey";
+const PRICE_CACHE_STORAGE = "financetracker_pricecache";
 
 // ── Data persistence via REST API ─────────────────────────────────────────────
 
@@ -37,4 +38,26 @@ export function loadAvKey() {
 
 export function saveAvKey(key) {
   window.localStorage.setItem(AV_KEY_STORAGE, key);
+}
+
+// ── Price cache (localStorage) ────────────────────────────────────────────────
+// Stores the last successfully fetched price for each symbol so the app can
+// fall back to a known-good value when the API returns zero or times out.
+// Shape: { [symbol]: { price: number, fetchedAt: number (ms epoch) } }
+
+export function loadPriceCache() {
+  try {
+    const raw = window.localStorage.getItem(PRICE_CACHE_STORAGE);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function savePriceCache(cache) {
+  try {
+    window.localStorage.setItem(PRICE_CACHE_STORAGE, JSON.stringify(cache));
+  } catch (e) {
+    console.warn("[savePriceCache] localStorage write failed:", e);
+  }
 }
