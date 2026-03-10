@@ -1,1 +1,6 @@
 .env
+
+# SQLite databases — contain personal financial data, never commit
+*.db
+*.sqlite
+*.sqlite3
