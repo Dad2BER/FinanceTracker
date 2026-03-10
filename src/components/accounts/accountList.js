@@ -4,8 +4,92 @@ import { createTaxTypeBadge } from "./taxTypeBadge.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 
+// ── Helper: build one account table ──────────────────────────────────────────
+
+function buildAccountTable(entries, countLabel, onSelectAccount) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-wrapper";
+
+  if (entries.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "table-empty-state";
+    empty.textContent = "None";
+    wrapper.appendChild(empty);
+    return wrapper;
+  }
+
+  wrapper.innerHTML = `
+    <table class="holdings-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Tax Type</th>
+          <th class="align-right">${countLabel}</th>
+          <th class="align-right">Total Value</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  `;
+
+  const tbody = wrapper.querySelector("tbody");
+
+  entries.forEach(({ account, total }) => {
+    const tr = document.createElement("tr");
+    tr.style.cursor = "pointer";
+
+    // Name
+    const nameCell = document.createElement("td");
+    nameCell.className = "symbol-cell";
+    nameCell.textContent = account.name;
+
+    // Tax type
+    const taxCell = document.createElement("td");
+    taxCell.appendChild(createTaxTypeBadge(account.taxType));
+
+    // Count (holdings or transactions)
+    const countCell = document.createElement("td");
+    countCell.className = "align-right dim";
+    countCell.textContent = account.accountType === "liability"
+      ? (account.transactions?.length ?? 0)
+      : account.holdings.length;
+
+    // Total value
+    const valueCell = document.createElement("td");
+    if (total === null) {
+      valueCell.className = "align-right";
+      valueCell.appendChild(createLoadingSpinner());
+    } else if (account.accountType === "liability") {
+      valueCell.className = "align-right";
+      const span = document.createElement("span");
+      span.style.fontWeight = "600";
+      if (total > 0) {
+        span.style.color = "var(--color-success)";
+        span.textContent = formatCurrency(total);
+      } else if (total < 0) {
+        span.style.color = "var(--color-danger)";
+        span.textContent = `-${formatCurrency(Math.abs(total))}`;
+      } else {
+        span.textContent = formatCurrency(0);
+      }
+      valueCell.appendChild(span);
+    } else {
+      valueCell.className = "align-right value-cell";
+      valueCell.textContent = formatCurrency(total);
+    }
+
+    tr.append(nameCell, taxCell, countCell, valueCell);
+    tr.addEventListener("click", () => onSelectAccount(account.id));
+    tbody.appendChild(tr);
+  });
+
+  return wrapper;
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
 /**
- * Renders the dashboard (summary cards + accounts table) into `container`.
+ * Renders the dashboard (summary cards + split accounts tables) into `container`.
  */
 export function renderAccountList(
   container,
@@ -50,123 +134,63 @@ export function renderAccountList(
     empty.querySelector("button").addEventListener("click", () => showAccountForm());
     container.appendChild(empty);
   } else {
-    // ── Summary Cards ──────────────────────────────────────────────────────────
+    // ── Summary Cards ────────────────────────────────────────────────────────
     const cardsSection = document.createElement("div");
     renderSummaryCards(cardsSection, accounts, prices, pricesLoading);
     container.appendChild(cardsSection);
 
-    // ── Accounts Table ─────────────────────────────────────────────────────────
+    // ── Separate assets vs liabilities ───────────────────────────────────────
+    const assetAccounts = accounts.filter((a) => a.accountType !== "liability");
+    const liabilityAccounts = accounts.filter((a) => a.accountType === "liability");
+
+    function computeTotal(account) {
+      if (account.accountType === "liability") {
+        return (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
+      }
+      return (pricesLoading || prices === null)
+        ? null
+        : account.holdings.reduce((sum, h) => {
+            const p = h.assetType === "cash" ? 1 : prices[h.symbol];
+            return p !== undefined ? sum + p * h.shares : sum;
+          }, 0);
+    }
+
+    function toEntries(accs) {
+      const entries = accs.map((a) => ({ account: a, total: computeTotal(a) }));
+      if (!pricesLoading && prices !== null) {
+        entries.sort((a, b) => (b.total ?? -Infinity) - (a.total ?? -Infinity));
+      }
+      return entries;
+    }
+
+    // ── Split table layout ────────────────────────────────────────────────────
     const section = document.createElement("div");
     section.className = "accounts-section";
 
-    const sectionTitle = document.createElement("h3");
-    sectionTitle.className = "section-title";
-    sectionTitle.textContent = "Accounts";
-    section.appendChild(sectionTitle);
+    const grid = document.createElement("div");
+    grid.className = "accounts-grid";
 
-    const tableWrapper = document.createElement("div");
-    tableWrapper.className = "table-wrapper";
-    tableWrapper.innerHTML = `
-      <table class="holdings-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Tax Type</th>
-            <th class="align-right">Holdings</th>
-            <th class="align-right">Total Value</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    `;
+    // Assets column
+    const assetsCol = document.createElement("div");
+    assetsCol.className = "accounts-col";
+    const assetsTitle = document.createElement("h3");
+    assetsTitle.className = "section-title";
+    assetsTitle.textContent = "Assets";
+    assetsCol.appendChild(assetsTitle);
+    assetsCol.appendChild(buildAccountTable(toEntries(assetAccounts), "Holdings", onSelectAccount));
 
-    const tbody = tableWrapper.querySelector("tbody");
+    // Liabilities column
+    const liabCol = document.createElement("div");
+    liabCol.className = "accounts-col";
+    const liabTitle = document.createElement("h3");
+    liabTitle.className = "section-title";
+    liabTitle.textContent = "Liabilities";
+    liabCol.appendChild(liabTitle);
+    liabCol.appendChild(buildAccountTable(toEntries(liabilityAccounts), "Transactions", onSelectAccount));
 
-    // Compute totals and sort by value descending (unpriced accounts go last)
-    const withTotals = accounts.map((account) => {
-      let total;
-      if (account.accountType === "liability") {
-        // Liability accounts: balance from transaction sum — no price fetch needed
-        total = (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
-      } else {
-        total = (pricesLoading || prices === null)
-          ? null
-          : account.holdings.reduce((sum, h) => {
-              const p = h.assetType === "cash" ? 1 : prices[h.symbol];
-              return p !== undefined ? sum + p * h.shares : sum;
-            }, 0);
-      }
-      return { account, total };
-    });
-    if (!pricesLoading && prices !== null) {
-      withTotals.sort((a, b) => (b.total ?? -Infinity) - (a.total ?? -Infinity));
-    }
-
-    withTotals.forEach(({ account, total }) => {
-      const tr = document.createElement("tr");
-      tr.style.cursor = "pointer";
-
-      // Total value for this account
-      let valueCell;
-      if (total === null) {
-        valueCell = document.createElement("td");
-        valueCell.className = "align-right";
-        valueCell.appendChild(createLoadingSpinner());
-      } else if (account.accountType === "liability") {
-        valueCell = document.createElement("td");
-        valueCell.className = "align-right";
-        const span = document.createElement("span");
-        span.style.fontWeight = "600";
-        if (total > 0) {
-          span.style.color = "var(--color-success)";
-          span.textContent = formatCurrency(total);
-        } else if (total < 0) {
-          span.style.color = "var(--color-danger)";
-          span.textContent = `-${formatCurrency(Math.abs(total))}`;
-        } else {
-          span.textContent = formatCurrency(0);
-        }
-        valueCell.appendChild(span);
-      } else {
-        valueCell = document.createElement("td");
-        valueCell.className = "align-right value-cell";
-        valueCell.textContent = formatCurrency(total);
-      }
-
-      // Name cell
-      const nameCell = document.createElement("td");
-      nameCell.className = "symbol-cell";
-      nameCell.textContent = account.name;
-
-      // Account type cell (Asset / Liability)
-      const accountTypeCell = document.createElement("td");
-      const accountTypeLabel = account.accountType === "liability" ? "Liability" : "Asset";
-      accountTypeCell.textContent = accountTypeLabel;
-      accountTypeCell.className = account.accountType === "liability" ? "dim" : "";
-
-      // Tax type cell with badge
-      const taxCell = document.createElement("td");
-      taxCell.appendChild(createTaxTypeBadge(account.taxType));
-
-      // Holdings / transactions count cell
-      const countCell = document.createElement("td");
-      countCell.className = "align-right dim";
-      countCell.textContent = account.accountType === "liability"
-        ? (account.transactions?.length ?? 0)
-        : account.holdings.length;
-
-      tr.appendChild(nameCell);
-      tr.appendChild(accountTypeCell);
-      tr.appendChild(taxCell);
-      tr.appendChild(countCell);
-      tr.appendChild(valueCell);
-
-      tr.addEventListener("click", () => onSelectAccount(account.id));
-      tbody.appendChild(tr);
-    });
-
-    section.appendChild(tableWrapper);
+    grid.appendChild(assetsCol);
+    grid.appendChild(liabCol);
+    section.appendChild(grid);
     container.appendChild(section);
   }
 

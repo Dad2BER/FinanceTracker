@@ -439,6 +439,21 @@
       color: var(--color-text-dim);
       margin-bottom: 0.75rem;
     }
+    .accounts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    .table-empty-state {
+      padding: 1.25rem 1rem;
+      text-align: center;
+      color: var(--color-text-dim);
+      font-size: 0.9rem;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+    }
 
     /* ── Wide Modal ──────────────────────────────────────────────────────── */
     .modal-card-wide { max-width: 560px; }
@@ -650,6 +665,7 @@
     /* ── Responsive ──────────────────────────────────────────────────────── */
     @media (max-width: 600px) {
       .dashboard-grid { grid-template-columns: 1fr; }
+      .accounts-grid  { grid-template-columns: 1fr; }
       .pie-svg { width: 110px; height: 110px; }
     }
     @media (max-width: 500px) {
