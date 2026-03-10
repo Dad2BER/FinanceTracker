@@ -90,8 +90,9 @@ export function renderSummaryCards(container, accounts, prices, pricesLoading) {
   if (!isLoading) {
     for (const account of accounts) {
       if (account.accountType === "liability") {
-        // Liability balance counts as cash
-        const balance = (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
+        // Liability balance (opening + transactions) counts as cash
+        const balance = (account.openingBalance || 0) +
+          (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
         if (balance === 0) continue;
         byAsset["cash"] = (byAsset["cash"] || 0) + balance;
         byTax[account.taxType] = (byTax[account.taxType] || 0) + balance;

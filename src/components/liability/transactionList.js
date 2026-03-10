@@ -77,7 +77,8 @@ export function renderTransactionList(container, account, categories, payees, on
   );
 
   // ── Balance Banner ──────────────────────────────────────────────────────────
-  const totalBalance = transactions.reduce((sum, t) => sum + t.amount, 0);
+  const totalBalance = (account.openingBalance || 0) +
+    transactions.reduce((sum, t) => sum + t.amount, 0);
   const banner = document.createElement("div");
   banner.className = `balance-banner ${totalBalance < 0 ? "balance-owed" : "balance-clear"}`;
   if (totalBalance > 0) {

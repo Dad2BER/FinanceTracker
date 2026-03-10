@@ -145,7 +145,8 @@ export function renderAccountList(
 
     function computeTotal(account) {
       if (account.accountType === "liability") {
-        return (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
+        return (account.openingBalance || 0) +
+          (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
       }
       return (pricesLoading || prices === null)
         ? null

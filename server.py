@@ -26,11 +26,12 @@ def init_db():
     con.execute("PRAGMA foreign_keys=ON")
     con.executescript("""
         CREATE TABLE IF NOT EXISTS accounts (
-            id           TEXT PRIMARY KEY,
-            name         TEXT NOT NULL,
-            tax_type     TEXT NOT NULL,
-            account_type TEXT NOT NULL DEFAULT 'asset',
-            created_at   TEXT NOT NULL
+            id              TEXT PRIMARY KEY,
+            name            TEXT NOT NULL,
+            tax_type        TEXT NOT NULL,
+            account_type    TEXT NOT NULL DEFAULT 'asset',
+            opening_balance REAL NOT NULL DEFAULT 0,
+            created_at      TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS holdings (
             id          TEXT PRIMARY KEY,
@@ -66,6 +67,12 @@ def init_db():
         );
     """)
     con.commit()
+    # Migrate: add opening_balance to existing databases that predate this column
+    try:
+        con.execute("ALTER TABLE accounts ADD COLUMN opening_balance REAL NOT NULL DEFAULT 0")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     con.close()
 
 
@@ -123,13 +130,14 @@ def load_state():
             transactions.append(tx)
 
         accounts.append({
-            "id":           a["id"],
-            "name":         a["name"],
-            "taxType":      a["tax_type"],
-            "accountType":  a["account_type"],
-            "createdAt":    a["created_at"],
-            "holdings":     holdings,
-            "transactions": transactions,
+            "id":             a["id"],
+            "name":           a["name"],
+            "taxType":        a["tax_type"],
+            "accountType":    a["account_type"],
+            "openingBalance": a["opening_balance"],
+            "createdAt":      a["created_at"],
+            "holdings":       holdings,
+            "transactions":   transactions,
         })
 
     # ── Categories + Subcategories ────────────────────────────────────────────
@@ -205,13 +213,14 @@ def save_state(data):
             # ── Accounts + Holdings + Transactions ─────────────────────────
             for acc in accounts:
                 con.execute(
-                    "INSERT INTO accounts (id, name, tax_type, account_type, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO accounts (id, name, tax_type, account_type, opening_balance, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
                     (
                         acc["id"],
                         acc["name"],
                         acc["taxType"],
                         acc.get("accountType", "asset"),
+                        acc.get("openingBalance", 0),
                         acc["createdAt"],
                     )
                 )

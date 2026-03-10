@@ -9,6 +9,8 @@ const ACCOUNT_TYPES = [
 
 export function showAccountForm(account = null) {
   const isEdit = account !== null;
+  const isLiability = isEdit && account.accountType === "liability";
+
   const el = document.createElement("div");
   el.className = "account-form";
   el.innerHTML = `
@@ -37,16 +39,29 @@ export function showAccountForm(account = null) {
         ).join("")}
       </select>
     </div>
+    <div class="form-group" id="af-ob-group" ${isLiability ? "" : 'style="display:none"'}>
+      <label for="af-opening-balance">Opening Balance</label>
+      <input id="af-opening-balance" type="number" step="0.01" class="form-input"
+        placeholder="0.00" value="${isEdit && account.openingBalance ? account.openingBalance : ""}">
+      <span class="field-hint">Starting balance before any imported transactions. Positive = credit, negative = owed.</span>
+    </div>
     <div class="form-actions">
       <button class="btn btn-secondary" id="af-cancel">Cancel</button>
       <button class="btn btn-primary" id="af-submit">${isEdit ? "Save" : "Add"}</button>
     </div>
   `;
 
-  const nameInput = el.querySelector("#af-name");
-  const taxSelect = el.querySelector("#af-tax");
+  const nameInput         = el.querySelector("#af-name");
+  const taxSelect         = el.querySelector("#af-tax");
   const accountTypeSelect = el.querySelector("#af-account-type");
-  const nameErr = el.querySelector("#af-name-err");
+  const obGroup           = el.querySelector("#af-ob-group");
+  const obInput           = el.querySelector("#af-opening-balance");
+  const nameErr           = el.querySelector("#af-name-err");
+
+  // Show/hide opening balance field based on account type selection
+  accountTypeSelect.addEventListener("change", () => {
+    obGroup.style.display = accountTypeSelect.value === "liability" ? "" : "none";
+  });
 
   el.querySelector("#af-cancel").addEventListener("click", () => Modal.close());
 
@@ -58,12 +73,14 @@ export function showAccountForm(account = null) {
       return;
     }
     nameErr.textContent = "";
-    const taxType = taxSelect.value;
-    const accountType = accountTypeSelect.value;
+    const taxType       = taxSelect.value;
+    const accountType   = accountTypeSelect.value;
+    const openingBalance = accountType === "liability" ? (parseFloat(obInput.value) || 0) : 0;
+
     if (isEdit) {
-      updateAccount(account.id, name, taxType, accountType);
+      updateAccount(account.id, name, taxType, accountType, openingBalance);
     } else {
-      addAccount(name, taxType, accountType);
+      addAccount(name, taxType, accountType, openingBalance);
     }
     Modal.close();
   });

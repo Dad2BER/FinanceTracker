@@ -36,12 +36,13 @@ export function getAccount(id) {
 
 // ── Account CRUD ──────────────────────────────────────────────────────────────
 
-export function addAccount(name, taxType, accountType = "asset") {
+export function addAccount(name, taxType, accountType = "asset", openingBalance = 0) {
   const account = {
     id: generateId(),
     name: name.trim(),
     taxType,
     accountType,
+    openingBalance: parseFloat(openingBalance) || 0,
     createdAt: new Date().toISOString(),
     holdings: [],
     transactions: [],
@@ -52,11 +53,11 @@ export function addAccount(name, taxType, accountType = "asset") {
   return account;
 }
 
-export function updateAccount(id, name, taxType, accountType = "asset") {
+export function updateAccount(id, name, taxType, accountType = "asset", openingBalance = 0) {
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) =>
-      a.id === id ? { ...a, name: name.trim(), taxType, accountType } : a
+      a.id === id ? { ...a, name: name.trim(), taxType, accountType, openingBalance: parseFloat(openingBalance) || 0 } : a
     ),
   };
   saveData(_data);
