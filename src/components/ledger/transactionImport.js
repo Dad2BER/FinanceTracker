@@ -97,6 +97,29 @@ function findMatchingPayee(description, payees) {
   return best;
 }
 
+// ── Duplicate Detection ────────────────────────────────────────────────────────
+
+// Builds a fast lookup map: "date||amount" → [payeeNames (lowercase)]
+function buildExistingLookup(existingTransactions) {
+  const map = new Map();
+  for (const tx of existingTransactions) {
+    const key = `${tx.date}||${tx.amount}`;
+    if (!map.has(key)) map.set(key, []);
+    const pn = (tx.payeeName || "").toLowerCase().trim();
+    if (pn) map.get(key).push(pn);
+  }
+  return map;
+}
+
+// A row is a duplicate if an existing transaction shares the same date, amount,
+// and description (matched bidirectionally against the stored payee name).
+function checkIsDuplicate(date, description, amount, existingLookup) {
+  const names = existingLookup.get(`${date}||${amount}`);
+  if (!names || names.length === 0) return false;
+  const desc = description.toLowerCase().trim();
+  return names.some((pn) => pn === desc || desc.includes(pn) || pn.includes(desc));
+}
+
 const _fmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 function formatAmt(amount) {
   if (amount === null) return "—";
@@ -106,9 +129,12 @@ function formatAmt(amount) {
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
-export function showImportModal(accountId, categories, payees) {
+export function showImportModal(accountId, categories, payees, existingTransactions = []) {
   const el = document.createElement("div");
   el.className = "import-modal";
+
+  // Pre-build lookup for O(1) duplicate detection
+  const existingLookup = buildExistingLookup(existingTransactions);
 
   // Persists across step nav so Back from step 2 can reuse the parsed CSV
   let _csvRows = null;
@@ -306,6 +332,7 @@ export function showImportModal(accountId, categories, payees) {
         const amount = rowAmount(row, cfg);
         if (!date || amount === null) continue;
         const matched = findMatchingPayee(desc, payees);
+        const isDupe = checkIsDuplicate(date, desc, amount, existingLookup);
         parsed.push({
           date,
           description: desc,
@@ -314,7 +341,8 @@ export function showImportModal(accountId, categories, payees) {
           payeeName: matched ? matched.name : "",
           subcategoryId: matched ? (matched.subcategoryId || null) : null,
           isNew: !matched,
-          skip: false,
+          isDuplicate: isDupe,
+          skip: isDupe,
         });
       }
 
@@ -330,8 +358,9 @@ export function showImportModal(accountId, categories, payees) {
 
   // ── Step 3: Review & Assign Payees ────────────────────────────────────────
   function step3(parsedRows) {
+    const dupeCount = parsedRows.filter((r) => r.isDuplicate).length;
     const matchedCount = parsedRows.filter((r) => r.matchedPayee).length;
-    const unmatchedCount = parsedRows.length - matchedCount;
+    const unmatchedCount = parsedRows.filter((r) => !r.matchedPayee && !r.isDuplicate).length;
 
     function getSubLabel(subId) {
       if (!subId) return "—";
@@ -376,6 +405,9 @@ export function showImportModal(accountId, categories, payees) {
         </div>`;
     }
 
+    const dupeBadge = dupeCount > 0
+      ? ` · <span style="color:var(--color-warning)">${dupeCount} duplicate${dupeCount > 1 ? "s" : ""} skipped</span>`
+      : "";
     const statusBadge = unmatchedCount > 0
       ? `<span style="color:var(--color-warning)">${unmatchedCount} need payee assignment</span>`
       : `<span style="color:var(--color-success)">all payees matched ✓</span>`;
@@ -385,7 +417,7 @@ export function showImportModal(accountId, categories, payees) {
     el.innerHTML = `
       <h3>Import Transactions — Step 3 of 3</h3>
       <p class="dim" style="margin-bottom:0.75rem;font-size:0.9rem;">
-        ${parsedRows.length} transactions · ${matchedCount} payees matched · ${statusBadge}
+        ${parsedRows.length} transactions · ${matchedCount} payees matched${dupeBadge} · ${statusBadge}
       </p>
       <datalist id="imp-payee-dl">${payeeDL}</datalist>
       <div class="import-review-wrap">
@@ -393,7 +425,7 @@ export function showImportModal(accountId, categories, payees) {
           <thead>
             <tr>
               <th style="width:2rem;text-align:center">
-                <input type="checkbox" id="imp-chk-all" checked title="Select / deselect all">
+                <input type="checkbox" id="imp-chk-all" ${dupeCount === 0 ? "checked" : ""} title="Select / deselect all">
               </th>
               <th>Date</th>
               <th>Description</th>
@@ -409,7 +441,7 @@ export function showImportModal(accountId, categories, payees) {
       <div class="form-actions">
         <button class="btn btn-secondary" id="imp-back">← Back</button>
         <button class="btn btn-primary" id="imp-import">
-          Import <span id="imp-count">${parsedRows.length}</span> Transaction(s)
+          Import <span id="imp-count">${parsedRows.filter((r) => !r.skip).length}</span> Transaction(s)
         </button>
       </div>
     `;
@@ -449,13 +481,16 @@ export function showImportModal(accountId, categories, payees) {
         : row.payeeName
         ? "border-color:var(--color-warning)"
         : "";
+      const dupeBadgeHtml = row.isDuplicate
+        ? `<span class="imp-dupe-badge">Duplicate</span>`
+        : "";
 
       tr.innerHTML = `
         <td style="text-align:center">
           <input type="checkbox" class="imp-row-chk" ${row.skip ? "" : "checked"}>
         </td>
         <td class="dim" style="white-space:nowrap;font-size:0.85rem">${escHtml(row.date)}</td>
-        <td class="imp-desc-cell" title="${escHtml(row.description)}">${escHtml(row.description)}</td>
+        <td class="imp-desc-cell" title="${escHtml(row.description)}">${escHtml(row.description)}${dupeBadgeHtml}</td>
         <td class="align-right">
           <span class="${amtClass}" style="font-size:0.85rem">${escHtml(formatAmt(row.amount))}</span>
         </td>
@@ -502,6 +537,12 @@ export function showImportModal(accountId, categories, payees) {
 
       tbody.appendChild(tr);
     });
+
+    // Set select-all to indeterminate when some (not all) rows are pre-skipped as dupes
+    const allChkEl = el.querySelector("#imp-chk-all");
+    if (dupeCount > 0 && dupeCount < parsedRows.length) {
+      allChkEl.indeterminate = true;
+    }
 
     // Select-all checkbox
     el.querySelector("#imp-chk-all").addEventListener("change", (e) => {

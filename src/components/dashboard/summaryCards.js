@@ -42,10 +42,6 @@ function makeCard(title, slices, total, isLoading) {
   const card = document.createElement("div");
   card.className = "summary-card";
 
-  const h3 = document.createElement("h3");
-  h3.textContent = title;
-  card.appendChild(h3);
-
   if (isLoading) {
     const loadRow = document.createElement("div");
     loadRow.className = "chart-loading";
@@ -95,8 +91,8 @@ export function renderSummaryCards(container, accounts, prices, pricesLoading) {
 
   if (!isLoading) {
     for (const account of accounts) {
-      if (account.accountType === "liability") {
-        // Liability balance (opening + transactions) counts as cash
+      if (account.accountType === "ledger") {
+        // Ledger balance (opening + transactions) counts as cash
         const balance = (account.openingBalance || 0) +
           (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
         if (balance === 0) continue;

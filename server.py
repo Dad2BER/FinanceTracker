@@ -83,6 +83,9 @@ def init_db():
         con.commit()
     except sqlite3.OperationalError:
         pass  # Column already exists
+    # Migrate: rename account_type 'liability' → 'ledger'
+    con.execute("UPDATE accounts SET account_type = 'ledger' WHERE account_type = 'liability'")
+    con.commit()
     con.close()
 
 

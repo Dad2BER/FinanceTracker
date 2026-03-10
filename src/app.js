@@ -4,13 +4,13 @@ import { loadData, loadApiKey, saveApiKey, loadAvKey, saveAvKey } from "./servic
 import { showManualPriceModal } from "./components/ui/manualPriceModal.js";
 import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
-import { renderTransactionList } from "./components/liability/transactionList.js";
+import { renderTransactionList } from "./components/ledger/transactionList.js";
 import { renderSettingsView } from "./components/settings/settingsView.js";
 
 // ── View State ────────────────────────────────────────────────────────────────
 // { page: "accounts" }
 // | { page: "account-detail", accountId: string }
-// | { page: "liability-detail", accountId: string }
+// | { page: "ledger-detail", accountId: string }
 // | { page: "settings" }
 let view = { page: "accounts" };
 
@@ -121,8 +121,8 @@ function render() {
       (accountId) => {
         const account = getAccount(accountId);
         navigateTo(
-          account?.accountType === "liability"
-            ? { page: "liability-detail", accountId }
+          account?.accountType === "ledger"
+            ? { page: "ledger-detail", accountId }
             : { page: "account-detail", accountId }
         );
       },
@@ -147,7 +147,7 @@ function render() {
       () => loadPrices(symbols),
       () => showApiKeyScreen(true)
     );
-  } else if (view.page === "liability-detail") {
+  } else if (view.page === "ledger-detail") {
     const account = getAccount(view.accountId);
     if (!account) {
       navigateTo({ page: "accounts" });
@@ -211,7 +211,7 @@ async function loadPrices(symbols) {
 }
 
 function loadPricesForCurrentView() {
-  if (view.page === "liability-detail" || view.page === "settings") return;
+  if (view.page === "ledger-detail" || view.page === "settings") return;
   if (view.page === "accounts") {
     loadPrices(uniqueSymbols(getAccounts()));
   } else {

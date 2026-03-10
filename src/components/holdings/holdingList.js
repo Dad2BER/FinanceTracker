@@ -1,7 +1,11 @@
 import { createHoldingRow } from "./holdingRow.js";
 import { showHoldingForm } from "./holdingForm.js";
+import { showAccountForm } from "../accounts/accountForm.js";
+import { createTaxTypeBadge } from "../accounts/taxTypeBadge.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
+import { deleteAccount } from "../../state.js";
+import { showConfirmDialog } from "../ui/confirmDialog.js";
 
 /**
  * Renders the account detail / holdings view into `container`.
@@ -26,8 +30,13 @@ export function renderHoldingList(
       <button class="btn btn-ghost btn-sm" id="back-btn">&#8592; Back</button>
     </div>
     <div class="detail-title-row">
-      <h1>${escHtml(account.name)}</h1>
+      <div>
+        <h1>${escHtml(account.name)}</h1>
+        <div id="account-tax-badge"></div>
+      </div>
       <div class="header-actions">
+        <button class="btn btn-ghost btn-sm" id="edit-account-btn" title="Edit account">&#9881; Edit</button>
+        <button class="btn btn-ghost btn-sm btn-danger" id="delete-account-btn" title="Delete account">&#128465; Delete</button>
         <button class="btn btn-ghost btn-sm" id="refresh-btn">&#8635; Refresh Prices</button>
         <button class="btn btn-ghost btn-sm" id="update-key-btn" title="Update API key">&#128273; API Key</button>
         <button class="btn btn-primary" id="add-holding-btn">+ Add Holding</button>
@@ -35,6 +44,7 @@ export function renderHoldingList(
     </div>
   `;
   container.appendChild(header);
+  header.querySelector("#account-tax-badge").appendChild(createTaxTypeBadge(account.taxType));
 
   if (pricesError) {
     const errEl = document.createElement("div");
@@ -101,6 +111,14 @@ export function renderHoldingList(
   }
 
   header.querySelector("#back-btn").addEventListener("click", onBack);
+  header.querySelector("#edit-account-btn").addEventListener("click", () => showAccountForm(account));
+  header.querySelector("#delete-account-btn").addEventListener("click", () => {
+    showConfirmDialog({
+      title: "Delete Account",
+      message: `Delete "${account.name}" and all its holdings? This cannot be undone.`,
+      onConfirm: () => { deleteAccount(account.id); onBack(); },
+    });
+  });
   header.querySelector("#refresh-btn").addEventListener("click", onRefresh);
   header.querySelector("#update-key-btn").addEventListener("click", onUpdateKey);
   header.querySelector("#add-holding-btn").addEventListener("click", () =>

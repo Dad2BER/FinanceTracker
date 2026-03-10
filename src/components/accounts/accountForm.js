@@ -3,13 +3,13 @@ import { addAccount, updateAccount } from "../../state.js";
 
 const TAX_TYPES = ["Taxable", "Tax-Free", "Tax-Deferred"];
 const ACCOUNT_TYPES = [
-  { value: "asset",     label: "Asset" },
-  { value: "liability", label: "Liability" },
+  { value: "asset",  label: "Asset" },
+  { value: "ledger", label: "Ledger" },
 ];
 
 export function showAccountForm(account = null) {
   const isEdit = account !== null;
-  const isLiability = isEdit && account.accountType === "liability";
+  const isLedger = isEdit && account.accountType === "ledger";
 
   const el = document.createElement("div");
   el.className = "account-form";
@@ -39,7 +39,7 @@ export function showAccountForm(account = null) {
         ).join("")}
       </select>
     </div>
-    <div class="form-group" id="af-ob-group" ${isLiability ? "" : 'style="display:none"'}>
+    <div class="form-group" id="af-ob-group" ${isLedger ? "" : 'style="display:none"'}>
       <label for="af-opening-balance">Opening Balance</label>
       <input id="af-opening-balance" type="number" step="0.01" class="form-input"
         placeholder="0.00" value="${isEdit && account.openingBalance ? account.openingBalance : ""}">
@@ -60,7 +60,7 @@ export function showAccountForm(account = null) {
 
   // Show/hide opening balance field based on account type selection
   accountTypeSelect.addEventListener("change", () => {
-    obGroup.style.display = accountTypeSelect.value === "liability" ? "" : "none";
+    obGroup.style.display = accountTypeSelect.value === "ledger" ? "" : "none";
   });
 
   el.querySelector("#af-cancel").addEventListener("click", () => Modal.close());
@@ -75,7 +75,7 @@ export function showAccountForm(account = null) {
     nameErr.textContent = "";
     const taxType       = taxSelect.value;
     const accountType   = accountTypeSelect.value;
-    const openingBalance = accountType === "liability" ? (parseFloat(obInput.value) || 0) : 0;
+    const openingBalance = accountType === "ledger" ? (parseFloat(obInput.value) || 0) : 0;
 
     if (isEdit) {
       updateAccount(account.id, name, taxType, accountType, openingBalance);

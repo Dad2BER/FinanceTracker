@@ -1,6 +1,4 @@
-import { showAccountForm } from "./accountForm.js";
 import { renderSummaryCards } from "../dashboard/summaryCards.js";
-import { createTaxTypeBadge } from "./taxTypeBadge.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 
@@ -23,7 +21,6 @@ function buildAccountTable(entries, countLabel, onSelectAccount) {
       <thead>
         <tr>
           <th>Name</th>
-          <th>Tax Type</th>
           <th class="align-right">${countLabel}</th>
           <th class="align-right">Total Value</th>
         </tr>
@@ -43,14 +40,10 @@ function buildAccountTable(entries, countLabel, onSelectAccount) {
     nameCell.className = "symbol-cell";
     nameCell.textContent = account.name;
 
-    // Tax type
-    const taxCell = document.createElement("td");
-    taxCell.appendChild(createTaxTypeBadge(account.taxType));
-
     // Count (holdings or transactions)
     const countCell = document.createElement("td");
     countCell.className = "align-right dim";
-    countCell.textContent = account.accountType === "liability"
+    countCell.textContent = account.accountType === "ledger"
       ? (account.transactions?.length ?? 0)
       : account.holdings.length;
 
@@ -59,7 +52,7 @@ function buildAccountTable(entries, countLabel, onSelectAccount) {
     if (total === null) {
       valueCell.className = "align-right";
       valueCell.appendChild(createLoadingSpinner());
-    } else if (account.accountType === "liability") {
+    } else if (account.accountType === "ledger") {
       valueCell.className = "align-right";
       const span = document.createElement("span");
       span.style.fontWeight = "600";
@@ -78,7 +71,7 @@ function buildAccountTable(entries, countLabel, onSelectAccount) {
       valueCell.textContent = formatCurrency(total);
     }
 
-    tr.append(nameCell, taxCell, countCell, valueCell);
+    tr.append(nameCell, countCell, valueCell);
     tr.addEventListener("click", () => onSelectAccount(account.id));
     tbody.appendChild(tr);
   });
@@ -139,12 +132,12 @@ export function renderAccountList(
     renderSummaryCards(cardsSection, accounts, prices, pricesLoading);
     container.appendChild(cardsSection);
 
-    // ── Separate assets vs liabilities ───────────────────────────────────────
-    const assetAccounts = accounts.filter((a) => a.accountType !== "liability");
-    const liabilityAccounts = accounts.filter((a) => a.accountType === "liability");
+    // ── Separate assets vs ledgers ────────────────────────────────────────────
+    const assetAccounts = accounts.filter((a) => a.accountType !== "ledger");
+    const ledgerAccounts = accounts.filter((a) => a.accountType === "ledger");
 
     function computeTotal(account) {
-      if (account.accountType === "liability") {
+      if (account.accountType === "ledger") {
         return (account.openingBalance || 0) +
           (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
       }
@@ -171,14 +164,14 @@ export function renderAccountList(
     const grid = document.createElement("div");
     grid.className = "accounts-grid";
 
-    const assetEntries = toEntries(assetAccounts);
-    const liabEntries  = toEntries(liabilityAccounts);
+    const assetEntries  = toEntries(assetAccounts);
+    const ledgerEntries = toEntries(ledgerAccounts);
 
     // Sum totals — null means prices still loading for that account
     const assetSum = assetEntries.every((e) => e.total !== null)
       ? assetEntries.reduce((s, e) => s + (e.total ?? 0), 0)
       : null;
-    const liabSum = liabEntries.reduce((s, e) => s + (e.total ?? 0), 0);
+    const ledgerSum = ledgerEntries.reduce((s, e) => s + (e.total ?? 0), 0);
 
     function sectionLabel(name, sum) {
       if (sum === null) return `${name} (loading…)`;
@@ -194,14 +187,14 @@ export function renderAccountList(
     assetsCol.appendChild(assetsTitle);
     assetsCol.appendChild(buildAccountTable(assetEntries, "Holdings", onSelectAccount));
 
-    // Liabilities column
+    // Ledgers column
     const liabCol = document.createElement("div");
     liabCol.className = "accounts-col";
     const liabTitle = document.createElement("h3");
     liabTitle.className = "section-title";
-    liabTitle.textContent = sectionLabel("Liabilities", liabSum);
+    liabTitle.textContent = sectionLabel("Ledgers", ledgerSum);
     liabCol.appendChild(liabTitle);
-    liabCol.appendChild(buildAccountTable(liabEntries, "Transactions", onSelectAccount));
+    liabCol.appendChild(buildAccountTable(ledgerEntries, "Transactions", onSelectAccount));
 
     grid.appendChild(assetsCol);
     grid.appendChild(liabCol);
