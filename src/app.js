@@ -1,6 +1,7 @@
 import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState } from "./state.js";
 import { fetchQuotes } from "./services/prices.js";
 import { loadData, loadApiKey, saveApiKey, loadAvKey, saveAvKey } from "./services/storage.js";
+import { showManualPriceModal } from "./components/ui/manualPriceModal.js";
 import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
 import { renderTransactionList } from "./components/liability/transactionList.js";
@@ -192,13 +193,21 @@ async function loadPrices(symbols) {
   pricesError = null;
   render();
   try {
-    prices = await fetchQuotes(symbols);
+    const result = await fetchQuotes(symbols);
+    prices = result.prices;
     pricesLoading = false;
+    render();
+    if (result.needsManualEntry.length > 0) {
+      showManualPriceModal(result.needsManualEntry, (entered) => {
+        prices = { ...prices, ...entered };
+        render();
+      });
+    }
   } catch (e) {
     pricesLoading = false;
     pricesError = e.message || "Failed to fetch prices.";
+    render();
   }
-  render();
 }
 
 function loadPricesForCurrentView() {
