@@ -171,23 +171,37 @@ export function renderAccountList(
     const grid = document.createElement("div");
     grid.className = "accounts-grid";
 
+    const assetEntries = toEntries(assetAccounts);
+    const liabEntries  = toEntries(liabilityAccounts);
+
+    // Sum totals — null means prices still loading for that account
+    const assetSum = assetEntries.every((e) => e.total !== null)
+      ? assetEntries.reduce((s, e) => s + (e.total ?? 0), 0)
+      : null;
+    const liabSum = liabEntries.reduce((s, e) => s + (e.total ?? 0), 0);
+
+    function sectionLabel(name, sum) {
+      if (sum === null) return `${name} (loading…)`;
+      return `${name} (${formatCurrency(sum)})`;
+    }
+
     // Assets column
     const assetsCol = document.createElement("div");
     assetsCol.className = "accounts-col";
     const assetsTitle = document.createElement("h3");
     assetsTitle.className = "section-title";
-    assetsTitle.textContent = "Assets";
+    assetsTitle.textContent = sectionLabel("Assets", assetSum);
     assetsCol.appendChild(assetsTitle);
-    assetsCol.appendChild(buildAccountTable(toEntries(assetAccounts), "Holdings", onSelectAccount));
+    assetsCol.appendChild(buildAccountTable(assetEntries, "Holdings", onSelectAccount));
 
     // Liabilities column
     const liabCol = document.createElement("div");
     liabCol.className = "accounts-col";
     const liabTitle = document.createElement("h3");
     liabTitle.className = "section-title";
-    liabTitle.textContent = "Liabilities";
+    liabTitle.textContent = sectionLabel("Liabilities", liabSum);
     liabCol.appendChild(liabTitle);
-    liabCol.appendChild(buildAccountTable(toEntries(liabilityAccounts), "Transactions", onSelectAccount));
+    liabCol.appendChild(buildAccountTable(liabEntries, "Transactions", onSelectAccount));
 
     grid.appendChild(assetsCol);
     grid.appendChild(liabCol);
