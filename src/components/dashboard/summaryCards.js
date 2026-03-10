@@ -32,6 +32,12 @@ function buildSlices(map, metaMap) {
     .sort((a, b) => b.value - a.value);
 }
 
+function fmtValue(v) {
+  if (v >= 1_000_000) return "$" + (v / 1_000_000).toFixed(1) + "M";
+  if (v >= 1_000)     return "$" + Math.round(v / 1_000) + "K";
+  return "$" + Math.round(v);
+}
+
 function makeCard(title, slices, total, isLoading) {
   const card = document.createElement("div");
   card.className = "summary-card";
@@ -63,7 +69,7 @@ function makeCard(title, slices, total, isLoading) {
     item.className = "legend-item";
     item.innerHTML = `
       <span class="legend-dot" style="background:${slice.color}"></span>
-      <span class="legend-label">${slice.label}</span>
+      <span class="legend-label">${slice.label} (${fmtValue(slice.value)})</span>
       <span class="legend-pct">${pct}%</span>
     `;
     legend.appendChild(item);
