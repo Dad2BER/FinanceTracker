@@ -164,6 +164,61 @@ export function renderSettingsView(container, categories, payees, onBack) {
   container.appendChild(header);
   header.querySelector("#back-btn").addEventListener("click", onBack);
 
+  // ── Database Backup / Restore ────────────────────────────────────────────────
+  const dbSection = document.createElement("div");
+  dbSection.className = "settings-db-section";
+  dbSection.innerHTML = `
+    <span class="settings-db-label">Database</span>
+    <div class="settings-db-actions">
+      <button class="btn btn-secondary btn-sm" id="db-backup-btn">⬇ Backup</button>
+      <button class="btn btn-secondary btn-sm settings-db-restore-btn" id="db-restore-btn">⬆ Restore</button>
+    </div>
+    <input type="file" id="db-restore-input" accept=".db" style="display:none">
+  `;
+  container.appendChild(dbSection);
+
+  // Backup: trigger a browser download from the server endpoint
+  dbSection.querySelector("#db-backup-btn").addEventListener("click", () => {
+    const a = document.createElement("a");
+    a.href = "/api/backup";
+    a.click();
+  });
+
+  // Restore: confirm → file picker → POST bytes → reload
+  const restoreInput = dbSection.querySelector("#db-restore-input");
+
+  dbSection.querySelector("#db-restore-btn").addEventListener("click", () => {
+    showConfirmDialog({
+      title: "Restore Database",
+      message: "This will replace ALL current data with the selected backup file. The page will reload automatically. This cannot be undone.",
+      onConfirm: () => restoreInput.click(),
+    });
+  });
+
+  restoreInput.addEventListener("change", async () => {
+    const file = restoreInput.files[0];
+    if (!file) return;
+    restoreInput.value = ""; // reset for next use
+
+    try {
+      const bytes = await file.arrayBuffer();
+      const res = await fetch("/api/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: bytes,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("Restore failed: " + (err.error || `HTTP ${res.status}`));
+        return;
+      }
+      // Full page reload so all in-memory state is replaced with the restored DB
+      window.location.reload();
+    } catch (e) {
+      alert("Restore failed: " + e.message);
+    }
+  });
+
   // ── Category Toolbar ────────────────────────────────────────────────────────
   const toolbar = document.createElement("div");
   toolbar.className = "settings-toolbar";

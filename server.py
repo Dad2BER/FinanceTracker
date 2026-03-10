@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import sqlite3
@@ -275,6 +276,8 @@ class FinanceHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/data":
             self._handle_get_data()
+        elif path == "/api/backup":
+            self._handle_get_backup()
         else:
             self._serve_static(path)
 
@@ -282,6 +285,8 @@ class FinanceHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/data":
             self._handle_post_data()
+        elif path == "/api/restore":
+            self._handle_post_restore()
         else:
             self._respond(404, "application/json", b'{"error":"not found"}')
 
@@ -304,6 +309,72 @@ class FinanceHandler(BaseHTTPRequestHandler):
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             body = json.dumps({"error": str(e)}).encode("utf-8")
             self._respond(400, "application/json; charset=utf-8", body)
+        except Exception as e:
+            body = json.dumps({"error": str(e)}).encode("utf-8")
+            self._respond(500, "application/json; charset=utf-8", body)
+
+    def _handle_get_backup(self):
+        try:
+            # Checkpoint WAL so all committed data is flushed to the main DB file
+            con = sqlite3.connect(DB_PATH)
+            con.execute("PRAGMA wal_checkpoint(FULL)")
+            con.close()
+
+            with open(DB_PATH, "rb") as f:
+                data = f.read()
+
+            today = datetime.date.today().strftime("%Y-%m-%d")
+            filename = f"finance-tracker-backup-{today}.db"
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except Exception as e:
+            body = json.dumps({"error": str(e)}).encode("utf-8")
+            self._respond(500, "application/json; charset=utf-8", body)
+
+    def _handle_post_restore(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = self.rfile.read(length)
+
+            # Validate SQLite magic bytes
+            if not data.startswith(b"SQLite format 3\x00"):
+                body = json.dumps({"error": "Not a valid SQLite database file."}).encode("utf-8")
+                self._respond(400, "application/json; charset=utf-8", body)
+                return
+
+            # Write to a temp file and verify it opens cleanly before touching the live DB
+            tmp_path = DB_PATH + ".restore_tmp"
+            with open(tmp_path, "wb") as f:
+                f.write(data)
+
+            try:
+                test_con = sqlite3.connect(tmp_path)
+                test_con.execute("SELECT count(*) FROM sqlite_master").fetchone()
+                test_con.close()
+            except Exception as e:
+                os.remove(tmp_path)
+                body = json.dumps({"error": f"Database validation failed: {e}"}).encode("utf-8")
+                self._respond(400, "application/json; charset=utf-8", body)
+                return
+
+            # Atomically replace the live DB
+            os.replace(tmp_path, DB_PATH)
+
+            # Remove stale WAL/SHM files that belong to the old database
+            for suffix in ["-wal", "-shm"]:
+                stale = DB_PATH + suffix
+                if os.path.exists(stale):
+                    os.remove(stale)
+
+            # Apply any schema migrations to the restored database
+            init_db()
+
+            self._respond(200, "application/json; charset=utf-8", b'{"ok":true}')
         except Exception as e:
             body = json.dumps({"error": str(e)}).encode("utf-8")
             self._respond(500, "application/json; charset=utf-8", body)
