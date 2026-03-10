@@ -5,7 +5,16 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-DB_PATH = "finance-tracker.db"
+# Accept --db <path> so the preview server (which runs from the worktree
+# directory) can be pointed at the main repo's database:
+#   python server.py --db /absolute/path/to/finance-tracker.db
+def _get_arg(flag, default):
+    try:
+        return sys.argv[sys.argv.index(flag) + 1]
+    except (ValueError, IndexError):
+        return default
+
+DB_PATH = _get_arg("--db", "finance-tracker.db")
 
 MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -330,7 +339,7 @@ class FinanceHandler(BaseHTTPRequestHandler):
 # ── Entry Point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 3000
+    port = int(_get_arg("--port", 3000))
     init_db()
     server = ThreadingHTTPServer(("", port), FinanceHandler)
     print(f"Finance Tracker running at http://localhost:{port}")
