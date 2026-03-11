@@ -1,4 +1,4 @@
-import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState } from "./state.js";
+import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState, recordAccountValue } from "./state.js";
 import { fetchQuotes } from "./services/prices.js";
 import { loadData, loadApiKey, saveApiKey, loadAvKey, saveAvKey } from "./services/storage.js";
 import { showManualPriceModal } from "./components/ui/manualPriceModal.js";
@@ -190,6 +190,30 @@ function navigateTo(newView) {
   loadPricesForCurrentView();
 }
 
+// ── Daily Value Recording ──────────────────────────────────────────────────────
+function recordDailyValues() {
+  if (prices === null) return;
+  const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  getAccounts().forEach((account) => {
+    let value;
+    if (account.accountType === "ledger") {
+      value = (account.openingBalance || 0) +
+        (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
+    } else {
+      // Only record asset accounts when all non-cash holdings have a price
+      let allPriced = true;
+      value = account.holdings.reduce((sum, h) => {
+        if (h.assetType === "cash") return sum + h.shares;
+        const p = prices[h.symbol];
+        if (p === undefined) { allPriced = false; return sum; }
+        return sum + p * h.shares;
+      }, 0);
+      if (!allPriced) return;
+    }
+    recordAccountValue(account.id, today, value);
+  });
+}
+
 // ── Price Loading ─────────────────────────────────────────────────────────────
 async function loadPrices(symbols) {
   if (!symbols || symbols.length === 0) {
@@ -197,6 +221,7 @@ async function loadPrices(symbols) {
     pricesLoading = false;
     pricesError = null;
     render();
+    recordDailyValues();
     return;
   }
   pricesLoading = true;
@@ -207,10 +232,12 @@ async function loadPrices(symbols) {
     prices = result.prices;
     pricesLoading = false;
     render();
+    recordDailyValues();
     if (result.needsManualEntry.length > 0) {
       showManualPriceModal(result.needsManualEntry, (entered) => {
         prices = { ...prices, ...entered };
         render();
+        recordDailyValues();
       });
     }
   } catch (e) {

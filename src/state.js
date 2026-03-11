@@ -46,6 +46,7 @@ export function addAccount(name, taxType, accountType = "asset", openingBalance 
     createdAt: new Date().toISOString(),
     holdings: [],
     transactions: [],
+    valueHistory: [],
   };
   _data = { ..._data, accounts: [..._data.accounts, account] };
   saveData(_data);
@@ -68,6 +69,33 @@ export function deleteAccount(id) {
   _data = { ..._data, accounts: _data.accounts.filter((a) => a.id !== id) };
   saveData(_data);
   notify();
+}
+
+// ── Value History ─────────────────────────────────────────────────────────────
+
+/**
+ * Upserts a daily value snapshot for an account.
+ * Intentionally does NOT call notify() — recording history must not
+ * trigger re-renders or it would create an infinite loop.
+ */
+export function recordAccountValue(accountId, date, value) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) => {
+      if (a.id !== accountId) return a;
+      const history = a.valueHistory || [];
+      const idx = history.findIndex((e) => e.date === date);
+      const newHistory = idx >= 0
+        ? history.map((e, i) => (i === idx ? { date, value } : e))
+        : [...history, { date, value }];
+      return { ...a, valueHistory: newHistory };
+    }),
+  };
+  saveData(_data);
+}
+
+export function getAccountValueHistory(accountId) {
+  return _data.accounts.find((a) => a.id === accountId)?.valueHistory ?? [];
 }
 
 // ── Holding CRUD ──────────────────────────────────────────────────────────────
