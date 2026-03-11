@@ -86,13 +86,14 @@ export function renderReportsView(container, accounts, categories, onBack) {
   const allCats = [...new Set(txs.map(t => t.cat))].sort();
   const catColor = new Map(allCats.map((c, i) => [c, PALETTE[i % PALETTE.length]]));
 
-  // Per month: stack only positive-net category amounts
+  // Per month: use absolute value of each category's net (handles both
+  // positive-expense and negative-expense sign conventions)
   const chartData = months.map(month => {
     const cm = monthMap.get(month);
     let total = 0;
     const segments = [];
     allCats.forEach(cat => {
-      const v = cm.get(cat) || 0;
+      const v = Math.abs(cm.get(cat) || 0);
       if (v > 0) {
         segments.push({ cat, v });
         total += v;
