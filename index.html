@@ -755,6 +755,42 @@
       gap: 0.6rem 1.25rem;
       padding: 0.25rem 0;
     }
+    .report-tooltip {
+      display: none;
+      position: absolute;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.65rem 0.9rem;
+      font-size: 0.82rem;
+      pointer-events: none;
+      z-index: 10;
+      white-space: nowrap;
+      box-shadow: var(--shadow);
+      min-width: 180px;
+    }
+    .rtt-month { font-weight: 700; margin-bottom: 0.15rem; }
+    .rtt-total { color: var(--color-text-dim); font-size: 0.78rem; margin-bottom: 0.35rem; }
+    .rtt-divider { height: 1px; background: var(--color-border); margin: 0.35rem 0; }
+    .rtt-cat {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-weight: 600;
+      margin-top: 0.3rem;
+    }
+    .rtt-cat-name { flex: 1; }
+    .rtt-val { flex-shrink: 0; }
+    .rtt-sub {
+      display: flex;
+      justify-content: space-between;
+      gap: 1.5rem;
+      padding-left: 1.2rem;
+      color: var(--color-text-dim);
+      font-size: 0.78rem;
+      margin-top: 0.1rem;
+    }
+    .rtt-sub-name { flex: 1; }
 
     /* ── Responsive ──────────────────────────────────────────────────────── */
     @media (max-width: 600px) {

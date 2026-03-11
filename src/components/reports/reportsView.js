@@ -12,6 +12,11 @@ function monthLabel(yyyyMM) {
   return d.toLocaleString("en-US", { month: "short", year: "2-digit" });
 }
 
+function monthLabelFull(yyyyMM) {
+  const [y, m] = yyyyMM.split("-");
+  return new Date(+y, +m - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+}
+
 function niceStep(maxVal, steps = 5) {
   if (maxVal <= 0) return 100;
   const rough = maxVal / steps;
@@ -49,54 +54,82 @@ export function renderReportsView(container, accounts, categories, onBack) {
     return;
   }
 
-  // Category id → name lookup
-  const catById = new Map(categories.map(c => [c.id, c.name]));
+  // Current year: only show Jan through current month
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-indexed
+  const yearPrefix = `${currentYear}-`;
 
-  // Collect all transactions excluding the Transfer category
+  // Category and subcategory lookups
+  const catById = new Map(categories.map(c => [c.id, c.name]));
+  const subcatById = new Map();
+  categories.forEach(cat => {
+    cat.subcategories.forEach(sub => subcatById.set(sub.id, sub.name));
+  });
+
+  // Collect current-year transactions excluding Transfer category
   const txs = [];
   ledgers.forEach(acct => {
     (acct.transactions || []).forEach(tx => {
+      const month = (tx.date || "").slice(0, 7);
+      if (month.length !== 7 || !month.startsWith(yearPrefix)) return;
       const catName = tx.categoryId ? catById.get(tx.categoryId) : null;
       if (catName === "Transfer") return;
-      const month = (tx.date || "").slice(0, 7);
-      if (month.length !== 7) return;
-      txs.push({ month, amount: tx.amount, cat: catName || "Uncategorized" });
+      const subcatName = tx.subcategoryId ? subcatById.get(tx.subcategoryId) : null;
+      txs.push({
+        month,
+        amount: tx.amount,
+        cat: catName || "Uncategorized",
+        subcat: subcatName || "Other",
+      });
     });
   });
 
   if (txs.length === 0) {
     const el = document.createElement("div");
     el.className = "empty-state";
-    el.innerHTML = "<p>No transactions to display (excluding Transfers).</p>";
+    el.innerHTML = `<p>No transactions for ${currentYear} (excluding Transfers).</p>`;
     container.appendChild(el);
     return;
   }
 
-  // Group: month → category → total
+  // Fixed month list: Jan through current month (fills gaps with empty bars)
+  const months = [];
+  for (let m = 1; m <= currentMonth; m++) {
+    months.push(`${currentYear}-${String(m).padStart(2, "0")}`);
+  }
+
+  // Group: month → category → subcategory → total
   const monthMap = new Map();
-  txs.forEach(({ month, amount, cat }) => {
+  txs.forEach(({ month, amount, cat, subcat }) => {
     if (!monthMap.has(month)) monthMap.set(month, new Map());
     const cm = monthMap.get(month);
-    cm.set(cat, (cm.get(cat) || 0) + amount);
+    if (!cm.has(cat)) cm.set(cat, new Map());
+    const sm = cm.get(cat);
+    sm.set(subcat, (sm.get(subcat) || 0) + amount);
   });
 
-  const months = [...monthMap.keys()].sort();
-
-  // All categories sorted, with assigned colors
+  // All categories across current year, sorted
   const allCats = [...new Set(txs.map(t => t.cat))].sort();
   const catColor = new Map(allCats.map((c, i) => [c, PALETTE[i % PALETTE.length]]));
 
-  // Per month: only include categories with net-negative totals (expenses
-  // exceed credits). Show absolute value so bars are positive heights.
+  // Build chart data: net-negative categories only, with subcategory breakdown
   const chartData = months.map(month => {
-    const cm = monthMap.get(month);
+    const cm = monthMap.get(month) || new Map();
     let total = 0;
     const segments = [];
     allCats.forEach(cat => {
-      const net = cm.get(cat) || 0;
-      if (net < 0) {
-        const v = Math.abs(net);
-        segments.push({ cat, v });
+      const sm = cm.get(cat) || new Map();
+      let catNet = 0;
+      sm.forEach(subTotal => { catNet += subTotal; });
+      if (catNet < 0) {
+        const v = Math.abs(catNet);
+        const subcats = [];
+        sm.forEach((subTotal, subName) => {
+          if (subTotal < 0) subcats.push({ name: subName, v: Math.abs(subTotal) });
+        });
+        subcats.sort((a, b) => b.v - a.v);
+        segments.push({ cat, v, subcats });
         total += v;
       }
     });
@@ -110,16 +143,67 @@ export function renderReportsView(container, accounts, categories, onBack) {
   section.className = "report-section";
   container.appendChild(section);
 
-  // ── SVG Chart ────────────────────────────────────────────────────────────────
+  // ── Chart wrap (position:relative so tooltip can be positioned inside) ───────
+  const svgWrap = document.createElement("div");
+  svgWrap.className = "report-chart-wrap";
+  svgWrap.style.position = "relative";
+  section.appendChild(svgWrap);
+
+  // ── Tooltip (lives in svgWrap but outside <svg> so it survives redraws) ──────
+  const tooltip = document.createElement("div");
+  tooltip.className = "report-tooltip";
+  svgWrap.appendChild(tooltip);
+
   const MARGIN = { top: 24, right: 16, bottom: 56, left: 72 };
   const SVG_H = 380;
 
-  const svgWrap = document.createElement("div");
-  svgWrap.className = "report-chart-wrap";
-  section.appendChild(svgWrap);
+  function buildTooltipHTML(d) {
+    let html = `<div class="rtt-month">${monthLabelFull(d.month)}</div>`;
+    html += `<div class="rtt-total">Total: <strong>${formatCurrency(d.total)}</strong></div>`;
+    if (d.segments.length > 0) {
+      html += `<div class="rtt-divider"></div>`;
+      d.segments.forEach(seg => {
+        html += `
+          <div class="rtt-cat">
+            <span class="legend-dot" style="background:${catColor.get(seg.cat)}"></span>
+            <span class="rtt-cat-name">${seg.cat}</span>
+            <span class="rtt-val">${formatCurrency(seg.v)}</span>
+          </div>`;
+        seg.subcats.forEach(sub => {
+          html += `
+            <div class="rtt-sub">
+              <span class="rtt-sub-name">${sub.name}</span>
+              <span class="rtt-val">${formatCurrency(sub.v)}</span>
+            </div>`;
+        });
+      });
+    }
+    return html;
+  }
+
+  function showTooltip(d, svgCx, chartW) {
+    tooltip.innerHTML = buildTooltipHTML(d);
+    tooltip.style.display = "block";
+    // Center tooltip on bar, but keep it within the chart area
+    const pct = svgCx / chartW;
+    const tipLeft = MARGIN.left + svgCx;
+    tooltip.style.top = `${MARGIN.top}px`;
+    tooltip.style.left = `${tipLeft}px`;
+    tooltip.style.transform = pct < 0.2
+      ? "translateX(0)"
+      : pct > 0.8
+        ? "translateX(-100%)"
+        : "translateX(-50%)";
+  }
+
+  function hideTooltip() {
+    tooltip.style.display = "none";
+  }
 
   function drawChart() {
-    svgWrap.innerHTML = "";
+    const oldSvg = svgWrap.querySelector("svg");
+    if (oldSvg) oldSvg.remove();
+
     const W = svgWrap.clientWidth || 800;
     const cW = W - MARGIN.left - MARGIN.right;
     const cH = SVG_H - MARGIN.top - MARGIN.bottom;
@@ -148,10 +232,8 @@ export function renderReportsView(container, accounts, categories, onBack) {
       const y = yPx(v);
 
       const line = document.createElementNS(NS, "line");
-      line.setAttribute("x1", 0);
-      line.setAttribute("x2", cW);
-      line.setAttribute("y1", y);
-      line.setAttribute("y2", y);
+      line.setAttribute("x1", 0); line.setAttribute("x2", cW);
+      line.setAttribute("y1", y); line.setAttribute("y2", y);
       line.setAttribute("stroke", "#2e3248");
       if (v > 0) line.setAttribute("stroke-dasharray", "4,3");
       g.appendChild(line);
@@ -176,16 +258,27 @@ export function renderReportsView(container, accounts, categories, onBack) {
     yLine.setAttribute("stroke", "#2e3248");
     g.appendChild(yLine);
 
-    // Bars
+    // One <g> per column for hover events
     chartData.forEach((d, i) => {
       const cx = i * slotW + slotW / 2;
       const x = cx - barW / 2;
-      let yBase = cH;
 
+      const colGroup = document.createElementNS(NS, "g");
+
+      // Invisible hover area covering the full slot width
+      const hoverRect = document.createElementNS(NS, "rect");
+      hoverRect.setAttribute("x", i * slotW);
+      hoverRect.setAttribute("y", 0);
+      hoverRect.setAttribute("width", slotW);
+      hoverRect.setAttribute("height", cH);
+      hoverRect.setAttribute("fill", "transparent");
+      colGroup.appendChild(hoverRect);
+
+      // Stacked bar segments
+      let yBase = cH;
       d.segments.forEach(seg => {
         const segH = (seg.v / yMax) * cH;
         yBase -= segH;
-
         const rect = document.createElementNS(NS, "rect");
         rect.setAttribute("x", x);
         rect.setAttribute("y", yBase);
@@ -193,11 +286,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
         rect.setAttribute("height", segH);
         rect.setAttribute("fill", catColor.get(seg.cat));
         rect.setAttribute("rx", 2);
-
-        const title = document.createElementNS(NS, "title");
-        title.textContent = `${seg.cat}: ${formatCurrency(seg.v)}`;
-        rect.appendChild(title);
-        g.appendChild(rect);
+        colGroup.appendChild(rect);
       });
 
       // Total label above bar
@@ -213,11 +302,11 @@ export function renderReportsView(container, accounts, categories, onBack) {
           lbl.textContent = d.total >= 1000
             ? `$${(d.total / 1000).toFixed(1)}k`
             : `$${Math.round(d.total)}`;
-          g.appendChild(lbl);
+          colGroup.appendChild(lbl);
         }
       }
 
-      // X-axis label (rotated for readability)
+      // X-axis label (rotated)
       const lx = cx;
       const ly = cH + 10;
       const xlabel = document.createElementNS(NS, "text");
@@ -228,10 +317,19 @@ export function renderReportsView(container, accounts, categories, onBack) {
       xlabel.setAttribute("font-size", "11");
       xlabel.setAttribute("transform", `rotate(-40,${lx},${ly})`);
       xlabel.textContent = monthLabel(d.month);
-      g.appendChild(xlabel);
+      colGroup.appendChild(xlabel);
+
+      // Hover events
+      if (d.total > 0) {
+        colGroup.addEventListener("mouseenter", () => showTooltip(d, cx, cW));
+        colGroup.addEventListener("mouseleave", hideTooltip);
+      }
+
+      g.appendChild(colGroup);
     });
 
-    svgWrap.appendChild(svg);
+    // Insert SVG before the tooltip div
+    svgWrap.insertBefore(svg, tooltip);
   }
 
   drawChart();
