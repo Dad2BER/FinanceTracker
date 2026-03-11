@@ -93,7 +93,8 @@ export function renderAccountList(
   onSelectAccount,
   onRefresh,
   onUpdateKey,
-  onSettings
+  onSettings,
+  onReports
 ) {
   container.innerHTML = "";
 
@@ -106,6 +107,7 @@ export function renderAccountList(
       <div class="header-actions">
         <button class="btn btn-ghost btn-sm" id="refresh-btn" title="Refresh prices">&#8635; Refresh Prices</button>
         <button class="btn btn-ghost btn-sm" id="update-key-btn" title="Update API key">&#128273; API Key</button>
+        <button class="btn btn-ghost btn-sm" id="reports-btn" title="Spending report">&#128202; Reports</button>
         <button class="btn btn-ghost btn-sm" id="settings-btn" title="Settings">&#9881; Settings</button>
         <button class="btn btn-primary" id="add-account-btn">+ Add Account</button>
       </div>
@@ -205,5 +207,6 @@ export function renderAccountList(
   header.querySelector("#add-account-btn").addEventListener("click", () => showAccountForm());
   header.querySelector("#refresh-btn").addEventListener("click", onRefresh);
   header.querySelector("#update-key-btn").addEventListener("click", onUpdateKey);
+  if (onReports) header.querySelector("#reports-btn").addEventListener("click", onReports);
   if (onSettings) header.querySelector("#settings-btn").addEventListener("click", onSettings);
 }

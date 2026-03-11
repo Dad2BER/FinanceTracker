@@ -6,12 +6,14 @@ import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
 import { renderTransactionList } from "./components/ledger/transactionList.js";
 import { renderSettingsView } from "./components/settings/settingsView.js";
+import { renderReportsView } from "./components/reports/reportsView.js";
 
 // ── View State ────────────────────────────────────────────────────────────────
 // { page: "accounts" }
 // | { page: "account-detail", accountId: string }
 // | { page: "ledger-detail", accountId: string }
 // | { page: "settings" }
+// | { page: "reports" }
 let view = { page: "accounts" };
 
 // ── Price State ───────────────────────────────────────────────────────────────
@@ -128,7 +130,8 @@ function render() {
       },
       () => loadPrices(symbols),
       () => showApiKeyScreen(true),
-      () => navigateTo({ page: "settings" })
+      () => navigateTo({ page: "settings" }),
+      () => navigateTo({ page: "reports" })
     );
   } else if (view.page === "account-detail") {
     const account = getAccount(view.accountId);
@@ -165,6 +168,13 @@ function render() {
       container,
       getCategories(),
       getPayees(),
+      () => navigateTo({ page: "accounts" })
+    );
+  } else if (view.page === "reports") {
+    renderReportsView(
+      container,
+      getAccounts(),
+      getCategories(),
       () => navigateTo({ page: "accounts" })
     );
   }
@@ -211,7 +221,7 @@ async function loadPrices(symbols) {
 }
 
 function loadPricesForCurrentView() {
-  if (view.page === "ledger-detail" || view.page === "settings") return;
+  if (view.page === "ledger-detail" || view.page === "settings" || view.page === "reports") return;
   if (view.page === "accounts") {
     loadPrices(uniqueSymbols(getAccounts()));
   } else {

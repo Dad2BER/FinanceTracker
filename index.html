@@ -736,6 +736,26 @@
       letter-spacing: 0.02em;
     }
 
+    /* ── Reports ─────────────────────────────────────────────────────────── */
+    .report-section {
+      margin-bottom: 1.5rem;
+    }
+    .report-chart-wrap {
+      width: 100%;
+      overflow: hidden;
+      border-radius: var(--radius-sm);
+      margin-bottom: 1rem;
+    }
+    .report-chart-wrap svg {
+      display: block;
+    }
+    .report-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem 1.25rem;
+      padding: 0.25rem 0;
+    }
+
     /* ── Responsive ──────────────────────────────────────────────────────── */
     @media (max-width: 600px) {
       .dashboard-grid { grid-template-columns: 1fr; }
