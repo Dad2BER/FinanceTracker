@@ -157,34 +157,30 @@ export function renderReportsView(container, accounts, categories, onBack) {
   const MARGIN = { top: 24, right: 16, bottom: 56, left: 72 };
   const SVG_H = 380;
 
-  function buildTooltipHTML(d) {
-    let html = `<div class="rtt-month">${monthLabelFull(d.month)}</div>`;
-    html += `<div class="rtt-total">Total: <strong>${formatCurrency(d.total)}</strong></div>`;
-    if (d.segments.length > 0) {
+  function buildTooltipHTML(month, seg) {
+    let html = `<div class="rtt-month">${monthLabelFull(month)}</div>`;
+    html += `
+      <div class="rtt-cat">
+        <span class="legend-dot" style="background:${catColor.get(seg.cat)}"></span>
+        <span class="rtt-cat-name">${seg.cat}</span>
+        <span class="rtt-val">${formatCurrency(seg.v)}</span>
+      </div>`;
+    if (seg.subcats.length > 0) {
       html += `<div class="rtt-divider"></div>`;
-      d.segments.forEach(seg => {
+      seg.subcats.forEach(sub => {
         html += `
-          <div class="rtt-cat">
-            <span class="legend-dot" style="background:${catColor.get(seg.cat)}"></span>
-            <span class="rtt-cat-name">${seg.cat}</span>
-            <span class="rtt-val">${formatCurrency(seg.v)}</span>
+          <div class="rtt-sub">
+            <span class="rtt-sub-name">${sub.name}</span>
+            <span class="rtt-val">${formatCurrency(sub.v)}</span>
           </div>`;
-        seg.subcats.forEach(sub => {
-          html += `
-            <div class="rtt-sub">
-              <span class="rtt-sub-name">${sub.name}</span>
-              <span class="rtt-val">${formatCurrency(sub.v)}</span>
-            </div>`;
-        });
       });
     }
     return html;
   }
 
-  function showTooltip(d, svgCx, chartW) {
-    tooltip.innerHTML = buildTooltipHTML(d);
+  function showTooltip(month, seg, svgCx, chartW) {
+    tooltip.innerHTML = buildTooltipHTML(month, seg);
     tooltip.style.display = "block";
-    // Center tooltip on bar, but keep it within the chart area
     const pct = svgCx / chartW;
     const tipLeft = MARGIN.left + svgCx;
     tooltip.style.top = `${MARGIN.top}px`;
@@ -265,16 +261,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
 
       const colGroup = document.createElementNS(NS, "g");
 
-      // Invisible hover area covering the full slot width
-      const hoverRect = document.createElementNS(NS, "rect");
-      hoverRect.setAttribute("x", i * slotW);
-      hoverRect.setAttribute("y", 0);
-      hoverRect.setAttribute("width", slotW);
-      hoverRect.setAttribute("height", cH);
-      hoverRect.setAttribute("fill", "transparent");
-      colGroup.appendChild(hoverRect);
-
-      // Stacked bar segments
+      // Stacked bar segments — each gets its own hover events
       let yBase = cH;
       d.segments.forEach(seg => {
         const segH = (seg.v / yMax) * cH;
@@ -286,6 +273,9 @@ export function renderReportsView(container, accounts, categories, onBack) {
         rect.setAttribute("height", segH);
         rect.setAttribute("fill", catColor.get(seg.cat));
         rect.setAttribute("rx", 2);
+        rect.style.cursor = "default";
+        rect.addEventListener("mouseenter", () => showTooltip(d.month, seg, cx, cW));
+        rect.addEventListener("mouseleave", hideTooltip);
         colGroup.appendChild(rect);
       });
 
@@ -318,12 +308,6 @@ export function renderReportsView(container, accounts, categories, onBack) {
       xlabel.setAttribute("transform", `rotate(-40,${lx},${ly})`);
       xlabel.textContent = monthLabel(d.month);
       colGroup.appendChild(xlabel);
-
-      // Hover events
-      if (d.total > 0) {
-        colGroup.addEventListener("mouseenter", () => showTooltip(d, cx, cW));
-        colGroup.addEventListener("mouseleave", hideTooltip);
-      }
 
       g.appendChild(colGroup);
     });
