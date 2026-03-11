@@ -28,8 +28,9 @@ function svgEl(tag, attrs = {}) {
  * Creates an SVG donut chart.
  * @param {Array<{label, value, color}>} slices
  * @param {number} total - portfolio total to display in center
+ * @param {string} [centerLabel="TOTAL"] - label shown above the center value
  */
-export function createPieChart(slices, total) {
+export function createPieChart(slices, total, centerLabel = "TOTAL") {
   const cx = 100, cy = 100, outerR = 86, innerR = 54;
   const svg = svgEl("svg", { viewBox: "0 0 200 200", class: "pie-svg" });
 
@@ -73,7 +74,7 @@ export function createPieChart(slices, total) {
       "font-size": "10",
       "font-family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     });
-    label.textContent = "TOTAL";
+    label.textContent = centerLabel;
     svg.appendChild(label);
 
     const amount = svgEl("text", {

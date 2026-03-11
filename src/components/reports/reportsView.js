@@ -1,4 +1,5 @@
 import { formatCurrency } from "../../utils/currency.js";
+import { createPieChart } from "../dashboard/pieChart.js";
 
 const PALETTE = [
   "#6366f1", "#f28e2c", "#e15759", "#59a14f", "#76b7b2",
@@ -54,7 +55,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
     return;
   }
 
-  // Current year: only show Jan through current month
+  // Current year — show Jan through current month
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1; // 1-indexed
@@ -67,7 +68,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
     cat.subcategories.forEach(sub => subcatById.set(sub.id, sub.name));
   });
 
-  // Collect current-year transactions excluding Transfer category
+  // Collect current-year transactions excluding Transfer
   const txs = [];
   ledgers.forEach(acct => {
     (acct.transactions || []).forEach(tx => {
@@ -93,7 +94,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
     return;
   }
 
-  // Fixed month list: Jan through current month (fills gaps with empty bars)
+  // Fixed month list: Jan through current month
   const months = [];
   for (let m = 1; m <= currentMonth; m++) {
     months.push(`${currentYear}-${String(m).padStart(2, "0")}`);
@@ -109,11 +110,11 @@ export function renderReportsView(container, accounts, categories, onBack) {
     sm.set(subcat, (sm.get(subcat) || 0) + amount);
   });
 
-  // All categories across current year, sorted
+  // All categories across current year, sorted, with colors
   const allCats = [...new Set(txs.map(t => t.cat))].sort();
   const catColor = new Map(allCats.map((c, i) => [c, PALETTE[i % PALETTE.length]]));
 
-  // Build chart data: net-negative categories only, with subcategory breakdown
+  // Bar chart data: net-negative categories only, with subcategory breakdown
   const chartData = months.map(month => {
     const cm = monthMap.get(month) || new Map();
     let total = 0;
@@ -138,18 +139,30 @@ export function renderReportsView(container, accounts, categories, onBack) {
 
   const maxTotal = Math.max(...chartData.map(d => d.total), 0);
 
+  // Complete months (before current month) used for the pie average
+  const completedMonths = months.filter(m => parseInt(m.split("-")[1]) < currentMonth);
+
   // ── Section ──────────────────────────────────────────────────────────────────
   const section = document.createElement("div");
   section.className = "report-section";
   container.appendChild(section);
 
-  // ── Chart wrap (position:relative so tooltip can be positioned inside) ───────
+  // ── Side-by-side layout ──────────────────────────────────────────────────────
+  const body = document.createElement("div");
+  body.className = "report-body";
+  section.appendChild(body);
+
+  // ── Bar chart column ─────────────────────────────────────────────────────────
+  const barCol = document.createElement("div");
+  barCol.className = "report-bar-col";
+  body.appendChild(barCol);
+
   const svgWrap = document.createElement("div");
   svgWrap.className = "report-chart-wrap";
   svgWrap.style.position = "relative";
-  section.appendChild(svgWrap);
+  barCol.appendChild(svgWrap);
 
-  // ── Tooltip (lives in svgWrap but outside <svg> so it survives redraws) ──────
+  // Tooltip lives in svgWrap but outside <svg> so it survives redraws
   const tooltip = document.createElement("div");
   tooltip.className = "report-tooltip";
   svgWrap.appendChild(tooltip);
@@ -200,7 +213,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
     const oldSvg = svgWrap.querySelector("svg");
     if (oldSvg) oldSvg.remove();
 
-    const W = svgWrap.clientWidth || 800;
+    const W = svgWrap.clientWidth || 600;
     const cW = W - MARGIN.left - MARGIN.right;
     const cH = SVG_H - MARGIN.top - MARGIN.bottom;
 
@@ -226,7 +239,6 @@ export function renderReportsView(container, accounts, categories, onBack) {
     // Y-axis gridlines + labels
     yTicks.forEach(v => {
       const y = yPx(v);
-
       const line = document.createElementNS(NS, "line");
       line.setAttribute("x1", 0); line.setAttribute("x2", cW);
       line.setAttribute("y1", y); line.setAttribute("y2", y);
@@ -254,14 +266,12 @@ export function renderReportsView(container, accounts, categories, onBack) {
     yLine.setAttribute("stroke", "#2e3248");
     g.appendChild(yLine);
 
-    // One <g> per column for hover events
+    // One <g> per column, segment rects get individual hover events
     chartData.forEach((d, i) => {
       const cx = i * slotW + slotW / 2;
       const x = cx - barW / 2;
-
       const colGroup = document.createElementNS(NS, "g");
 
-      // Stacked bar segments — each gets its own hover events
       let yBase = cH;
       d.segments.forEach(seg => {
         const segH = (seg.v / yMax) * cH;
@@ -297,8 +307,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
       }
 
       // X-axis label (rotated)
-      const lx = cx;
-      const ly = cH + 10;
+      const lx = cx, ly = cH + 10;
       const xlabel = document.createElementNS(NS, "text");
       xlabel.setAttribute("x", lx);
       xlabel.setAttribute("y", ly);
@@ -312,7 +321,6 @@ export function renderReportsView(container, accounts, categories, onBack) {
       g.appendChild(colGroup);
     });
 
-    // Insert SVG before the tooltip div
     svgWrap.insertBefore(svg, tooltip);
   }
 
@@ -321,9 +329,9 @@ export function renderReportsView(container, accounts, categories, onBack) {
   const ro = new ResizeObserver(() => drawChart());
   ro.observe(svgWrap);
 
-  // ── Legend ───────────────────────────────────────────────────────────────────
-  const legend = document.createElement("div");
-  legend.className = "report-legend";
+  // Bar chart legend (category colour key)
+  const barLegend = document.createElement("div");
+  barLegend.className = "report-legend";
   allCats.forEach(cat => {
     const item = document.createElement("div");
     item.className = "legend-item";
@@ -331,7 +339,83 @@ export function renderReportsView(container, accounts, categories, onBack) {
       <span class="legend-dot" style="background:${catColor.get(cat)}"></span>
       <span>${cat}</span>
     `;
-    legend.appendChild(item);
+    barLegend.appendChild(item);
   });
-  section.appendChild(legend);
+  barCol.appendChild(barLegend);
+
+  // ── Pie chart column ─────────────────────────────────────────────────────────
+  const pieCol = document.createElement("div");
+  pieCol.className = "report-pie-col";
+  body.appendChild(pieCol);
+
+  const pieCard = document.createElement("div");
+  pieCard.className = "report-pie-card";
+  pieCol.appendChild(pieCard);
+
+  const pieTitle = document.createElement("h3");
+  pieTitle.className = "section-title";
+  pieTitle.style.marginBottom = "0.25rem";
+  pieTitle.textContent = "Monthly Average";
+  pieCard.appendChild(pieTitle);
+
+  if (completedMonths.length === 0) {
+    const msg = document.createElement("p");
+    msg.style.cssText = "color:var(--color-text-dim);font-size:0.85rem;padding:0.5rem 0";
+    msg.textContent = "No complete months yet.";
+    pieCard.appendChild(msg);
+  } else {
+    // Date range subtitle
+    const first = completedMonths[0];
+    const last = completedMonths[completedMonths.length - 1];
+    const sub = document.createElement("p");
+    sub.style.cssText = "font-size:0.78rem;color:var(--color-text-dim);margin-bottom:0.85rem";
+    sub.textContent = first === last
+      ? monthLabel(first)
+      : `${monthLabel(first)} – ${monthLabel(last)}`;
+    pieCard.appendChild(sub);
+
+    // Compute average spending per category across complete months
+    const catTotals = new Map();
+    completedMonths.forEach(month => {
+      const cm = monthMap.get(month) || new Map();
+      allCats.forEach(cat => {
+        const sm = cm.get(cat) || new Map();
+        let catNet = 0;
+        sm.forEach(subTotal => { catNet += subTotal; });
+        if (catNet < 0) {
+          catTotals.set(cat, (catTotals.get(cat) || 0) + Math.abs(catNet));
+        }
+      });
+    });
+
+    const n = completedMonths.length;
+    const pieSlices = [];
+    let avgTotal = 0;
+    catTotals.forEach((total, cat) => {
+      const avg = total / n;
+      pieSlices.push({ label: cat, value: avg, color: catColor.get(cat) });
+      avgTotal += avg;
+    });
+    pieSlices.sort((a, b) => b.value - a.value);
+
+    // Donut chart
+    const pieSvg = createPieChart(pieSlices, avgTotal, "AVG/MO");
+    pieSvg.style.cssText = "display:block;margin:0 auto 0.85rem";
+    pieCard.appendChild(pieSvg);
+
+    // Pie legend: dot + name + avg amount
+    const pieLegend = document.createElement("div");
+    pieLegend.className = "pie-legend";
+    pieSlices.forEach(slice => {
+      const item = document.createElement("div");
+      item.className = "legend-item";
+      item.innerHTML = `
+        <span class="legend-dot" style="background:${slice.color}"></span>
+        <span class="legend-label">${slice.label}</span>
+        <span class="legend-pct">${formatCurrency(slice.value)}</span>
+      `;
+      pieLegend.appendChild(item);
+    });
+    pieCard.appendChild(pieLegend);
+  }
 }
