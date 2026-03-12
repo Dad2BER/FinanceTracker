@@ -5,6 +5,7 @@ import { showImportModal } from "./transactionImport.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { showAccountForm } from "../accounts/accountForm.js";
 import { createTaxTypeBadge } from "../accounts/taxTypeBadge.js";
+import { attachTableFilter } from "../../utils/tableFilter.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -174,6 +175,12 @@ export function renderTransactionList(container, account, categories, payees, on
 
     tbody.appendChild(tr);
   });
+
+  // Columns: Date, Payee, Category, Subcategory, Tag, Amount, Balance, Actions
+  attachTableFilter(
+    tableWrapper.querySelector("table"),
+    [true, true, true, true, true, true, false, false]
+  );
 
   container.appendChild(tableWrapper);
 }

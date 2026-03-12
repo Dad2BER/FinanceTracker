@@ -6,6 +6,7 @@ import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 import { deleteAccount } from "../../state.js";
 import { showConfirmDialog } from "../ui/confirmDialog.js";
+import { attachTableFilter } from "../../utils/tableFilter.js";
 
 /**
  * Renders the account detail / holdings view into `container`.
@@ -107,6 +108,12 @@ export function renderHoldingList(
     account.holdings.forEach((holding) => {
       tbody.appendChild(createHoldingRow(account.id, holding, prices, pricesLoading));
     });
+    // Columns: Symbol, Shares, Origin, Type, Price, Value, Actions
+    attachTableFilter(
+      tableWrapper.querySelector("table"),
+      [true, false, true, true, false, false, false]
+    );
+
     container.appendChild(tableWrapper);
   }
 
