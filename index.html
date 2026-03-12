@@ -266,6 +266,102 @@
     }
     .filter-date:focus { border-color: var(--color-primary); }
 
+    /* ── Symbol Link (clickable ticker in holdings table) ────────────────── */
+    .symbol-link {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--color-primary);
+      font-weight: 700;
+      font-size: inherit;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-underline-offset: 2px;
+    }
+    .symbol-link:hover {
+      color: var(--color-primary-hover);
+      text-decoration-style: solid;
+    }
+
+    /* ── Stock Info Modal ─────────────────────────────────────────────────── */
+    .stock-info-modal { min-width: 260px; }
+    .stock-info-header { margin-bottom: 0.75rem; }
+    .stock-info-symbol { font-size: 1.4rem; font-weight: 700; }
+    .stock-info-body { min-height: 80px; }
+    .stock-info-profile {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.9rem;
+      margin-bottom: 1.1rem;
+    }
+    .stock-info-logo {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border);
+      flex-shrink: 0;
+      background: var(--color-surface-2);
+    }
+    .stock-info-meta { display: flex; flex-direction: column; gap: 0.35rem; }
+    .stock-info-name { font-size: 1rem; font-weight: 600; }
+    .stock-info-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .stock-tag {
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.1rem 0.45rem;
+      font-size: 0.72rem;
+      color: var(--color-text-dim);
+    }
+    .stock-info-link {
+      font-size: 0.8rem;
+      color: var(--color-primary);
+      text-decoration: none;
+    }
+    .stock-info-link:hover { text-decoration: underline; }
+    .stock-info-price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.85rem;
+      margin-bottom: 1.1rem;
+      flex-wrap: wrap;
+    }
+    .stock-info-current { font-size: 1.7rem; font-weight: 700; }
+    .stock-info-change { font-size: 1rem; font-weight: 600; }
+    .stock-change-up   { color: var(--color-success); }
+    .stock-change-down { color: var(--color-danger); }
+    .stock-info-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem 1.25rem;
+      margin-bottom: 1.1rem;
+    }
+    .stock-info-stat { display: flex; flex-direction: column; gap: 0.1rem; }
+    .stat-label {
+      font-size: 0.68rem;
+      color: var(--color-text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .stat-value { font-size: 0.92rem; font-weight: 600; }
+    .stock-info-footer { text-align: right; margin-top: 0.5rem; }
+    .stock-info-attribution {
+      font-size: 0.7rem;
+      color: var(--color-text-dim);
+      text-decoration: none;
+    }
+    .stock-info-attribution:hover { text-decoration: underline; }
+    .stock-info-error {
+      color: var(--color-danger);
+      font-size: 0.9rem;
+      padding: 0.5rem 0;
+    }
+    @media (max-width: 480px) {
+      .stock-info-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
     /* ── Modal ───────────────────────────────────────────────────────────── */
     .modal-backdrop {
       position: fixed;

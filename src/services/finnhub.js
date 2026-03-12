@@ -40,3 +40,36 @@ export async function fetchQuotes(symbols) {
   });
   return priceMap;
 }
+
+/**
+ * Fetches the full quote object for a symbol (open, high, low, prev close,
+ * current price, change, change %).
+ * Returns the raw Finnhub /quote response: { c, d, dp, h, l, o, pc, t }
+ */
+export async function fetchQuoteDetail(symbol) {
+  const API_KEY = window.__FINNHUB_API_KEY__ || "";
+  if (!API_KEY) throw new Error("No Finnhub API key configured.");
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!data || data.c <= 0) throw new Error(`No price data for: ${symbol}`);
+  return data;
+}
+
+/**
+ * Fetches the company profile for a symbol.
+ * Returns the raw Finnhub /stock/profile2 response:
+ *   { name, exchange, finnhubIndustry, marketCapitalization,
+ *     weburl, logo, country, currency, ticker }
+ */
+export async function fetchProfile(symbol) {
+  const API_KEY = window.__FINNHUB_API_KEY__ || "";
+  if (!API_KEY) throw new Error("No Finnhub API key configured.");
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}

@@ -3,6 +3,7 @@ import { showConfirmDialog } from "../ui/confirmDialog.js";
 import { deleteHolding } from "../../state.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
+import { showStockInfo } from "./stockInfoModal.js";
 
 /**
  * Creates a table row element for a holding.
@@ -42,8 +43,13 @@ export function createHoldingRow(accountId, holding, prices, pricesLoading) {
     ? `<td>${TYPE_LABELS[holding.assetType] ?? escHtml(holding.assetType)}</td>`
     : `<td><span class="dim">—</span></td>`;
 
+  // Symbol cell: clickable for non-cash (opens stock info popup), plain for cash
+  const symbolCellHtml = isCash
+    ? `<td class="symbol-cell"><strong>${escHtml(holding.symbol)}</strong></td>`
+    : `<td class="symbol-cell"><button class="symbol-link" data-action="info" title="View ${escHtml(holding.symbol)} info">${escHtml(holding.symbol)}</button></td>`;
+
   tr.innerHTML = `
-    <td class="symbol-cell"><strong>${escHtml(holding.symbol)}</strong></td>
+    ${symbolCellHtml}
     <td class="align-right">${holding.shares.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td>
     ${originCell}
     ${typeCell}
@@ -54,6 +60,12 @@ export function createHoldingRow(accountId, holding, prices, pricesLoading) {
       <button class="icon-btn icon-btn-danger" title="Delete holding" data-action="delete">&#128465;</button>
     </td>
   `;
+
+  if (!isCash) {
+    tr.querySelector("[data-action='info']").addEventListener("click", () =>
+      showStockInfo(holding.symbol)
+    );
+  }
 
   tr.querySelector("[data-action='edit']").addEventListener("click", () =>
     showHoldingForm(accountId, holding)
