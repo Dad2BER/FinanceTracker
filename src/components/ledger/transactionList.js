@@ -176,10 +176,28 @@ export function renderTransactionList(container, account, categories, payees, on
     tbody.appendChild(tr);
   });
 
+  // Build category and subcategory option lists for dropdown filters
+  const categoryNames = categories.map((c) => c.name);
+  const allSubcatNames = categories.flatMap((c) => c.subcategories.map((s) => s.name));
+
   // Columns: Date, Payee, Category, Subcategory, Tag, Amount, Balance, Actions
   attachTableFilter(
     tableWrapper.querySelector("table"),
-    [true, true, true, true, true, true, false, false]
+    [
+      "daterange",
+      "text",
+      { type: "select", options: categoryNames },
+      { type: "select", options: allSubcatNames },
+      "text",
+      "text",
+      null,
+      null,
+    ],
+    {
+      categoryCol: 2,
+      subcategoryCol: 3,
+      categories,
+    }
   );
 
   container.appendChild(tableWrapper);

@@ -234,6 +234,37 @@
     }
     .filter-input:focus { border-color: var(--color-primary); }
     .filter-input::placeholder { color: var(--color-text-dim); opacity: 0.6; }
+    .filter-select {
+      width: 100%;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.25rem 0.4rem;
+      color: var(--color-text);
+      font-size: 0.78rem;
+      outline: none;
+      transition: border-color 0.15s;
+      cursor: pointer;
+    }
+    .filter-select:focus { border-color: var(--color-primary); }
+    .filter-daterange {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+    .filter-date {
+      width: 100%;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.2rem 0.4rem;
+      color: var(--color-text);
+      font-size: 0.75rem;
+      outline: none;
+      transition: border-color 0.15s;
+      box-sizing: border-box;
+    }
+    .filter-date:focus { border-color: var(--color-primary); }
 
     /* ── Modal ───────────────────────────────────────────────────────────── */
     .modal-backdrop {
