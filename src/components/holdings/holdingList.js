@@ -76,13 +76,35 @@ export function renderHoldingList(
       }, 0);
     }
 
+    // Total daily change: sum of (shares × daily $ change) for holdings with Finnhub data
+    let totalDayChange = null;
+    if (!pricesLoading && quoteDetails && Object.keys(quoteDetails).length > 0) {
+      let sum = 0;
+      let hasAny = false;
+      account.holdings.forEach((h) => {
+        if (h.assetType === "cash") return;
+        const d = quoteDetails[h.symbol]?.d;
+        if (d !== undefined && d !== null) {
+          sum += h.shares * d;
+          hasAny = true;
+        }
+      });
+      if (hasAny) totalDayChange = sum;
+    }
+
     const totalEl = document.createElement("div");
     totalEl.className = "account-total-banner";
     if (pricesLoading) {
       totalEl.innerHTML = `<span>Total Value: </span>`;
       totalEl.querySelector("span").appendChild(createLoadingSpinner());
     } else if (totalValue !== null) {
-      totalEl.innerHTML = `<span>Total Value: <strong>${formatCurrency(totalValue)}</strong></span>`;
+      let dayChangeHtml = "";
+      if (totalDayChange !== null && Math.abs(totalDayChange) >= 0.01) {
+        const sign = totalDayChange > 0 ? "+" : "-";
+        const color = totalDayChange > 0 ? "var(--color-success)" : "var(--color-danger)";
+        dayChangeHtml = ` <span class="total-day-change" style="color:${color}">(${sign}${formatCurrency(Math.abs(totalDayChange))} today)</span>`;
+      }
+      totalEl.innerHTML = `<span>Total Value: <strong>${formatCurrency(totalValue)}</strong>${dayChangeHtml}</span>`;
     }
     container.appendChild(totalEl);
 
