@@ -5,22 +5,37 @@ import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 // ── Helper: compute $ change vs previous recorded day ─────────────────────────
 
 /**
- * Returns the dollar change between `currentTotal` and the most recent
- * valueHistory entry whose date is before today, or null if unavailable.
+ * Returns the dollar change vs the previous recorded day.
+ *
+ * Priority:
+ *  1. Most recent valueHistory entry with date < today (works for all account types
+ *     once at least two days of data have been recorded).
+ *  2. Ledger fallback: sum of today's transactions (works on day one — no stored
+ *     history required).  Asset accounts need two days of price history.
  */
 function computeDayChange(account, currentTotal) {
   if (currentTotal === null) return null;
-  const history = account.valueHistory;
-  if (!history || history.length === 0) return null;
 
   const today = new Date().toISOString().slice(0, 10);
-  // Find the newest entry strictly before today
-  const prev = [...history]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .find((e) => e.date < today);
-  if (!prev) return null;
 
-  return currentTotal - prev.value;
+  // ── 1. Stored history (preferred) ──────────────────────────────────────────
+  const history = account.valueHistory;
+  if (history && history.length > 0) {
+    const prev = [...history]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .find((e) => e.date < today);
+    if (prev) return currentTotal - prev.value;
+  }
+
+  // ── 2. Ledger fallback: today's transactions ────────────────────────────────
+  if (account.accountType === "ledger") {
+    const todayNet = (account.transactions || [])
+      .filter((t) => t.date === today)
+      .reduce((sum, t) => sum + t.amount, 0);
+    if (todayNet !== 0) return todayNet;
+  }
+
+  return null;
 }
 
 // ── Helper: build one account table ──────────────────────────────────────────
