@@ -25,20 +25,30 @@ export async function fetchQuote(symbol) {
   if (!data || data.c <= 0) {
     throw new Error(`No valid price data for: ${symbol}`);
   }
-  return data.c;
+  // Return price plus daily change data (dp = % change, d = $ change)
+  return { price: data.c, dp: data.dp ?? null, d: data.d ?? null };
 }
 
+/**
+ * Fetches quotes for multiple symbols.
+ * Returns { priceMap, detailsMap } where:
+ *   priceMap:   { symbol: price }
+ *   detailsMap: { symbol: { dp, d } }  — daily % and $ change from Finnhub
+ */
 export async function fetchQuotes(symbols) {
   const results = await Promise.allSettled(symbols.map(fetchQuote));
   const priceMap = {};
+  const detailsMap = {};
   symbols.forEach((sym, i) => {
     if (results[i].status === "fulfilled") {
-      priceMap[sym] = results[i].value;
+      const { price, dp, d } = results[i].value;
+      priceMap[sym] = price;
+      if (dp !== null) detailsMap[sym] = { dp, d };
     } else {
       console.warn(`[finnhub] ${sym}: ${results[i].reason?.message}`);
     }
   });
-  return priceMap;
+  return { priceMap, detailsMap };
 }
 
 /**

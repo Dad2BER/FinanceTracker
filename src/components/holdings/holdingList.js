@@ -15,6 +15,7 @@ export function renderHoldingList(
   container,
   account,
   prices,
+  quoteDetails,
   pricesLoading,
   pricesError,
   onBack,
@@ -106,7 +107,7 @@ export function renderHoldingList(
     `;
     const tbody = tableWrapper.querySelector("tbody");
     account.holdings.forEach((holding) => {
-      tbody.appendChild(createHoldingRow(account.id, holding, prices, pricesLoading));
+      tbody.appendChild(createHoldingRow(account.id, holding, prices, quoteDetails, pricesLoading));
     });
     // Columns: Symbol, Shares, Origin, Type, Price, Value, Actions
     attachTableFilter(

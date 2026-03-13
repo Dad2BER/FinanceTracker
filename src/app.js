@@ -18,6 +18,7 @@ let view = { page: "accounts" };
 
 // ── Price State ───────────────────────────────────────────────────────────────
 let prices = null;
+let quoteDetails = {};   // { symbol: { dp, d } } — daily % and $ change
 let pricesLoading = false;
 let pricesError = null;
 
@@ -144,6 +145,7 @@ function render() {
       container,
       account,
       prices,
+      quoteDetails,
       pricesLoading,
       pricesError,
       () => navigateTo({ page: "accounts" }),
@@ -184,6 +186,7 @@ function render() {
 function navigateTo(newView) {
   view = newView;
   prices = null;
+  quoteDetails = {};
   pricesLoading = false;
   pricesError = null;
   render();
@@ -230,6 +233,7 @@ async function loadPrices(symbols) {
   try {
     const result = await fetchQuotes(symbols);
     prices = result.prices;
+    quoteDetails = result.quoteDetails ?? {};
     pricesLoading = false;
     render();
     recordDailyValues();

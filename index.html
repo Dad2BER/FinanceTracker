@@ -266,6 +266,18 @@
     }
     .filter-date:focus { border-color: var(--color-primary); }
 
+    /* ── Daily % Change Badge (holdings price cell) ──────────────────────── */
+    .dp-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      margin-left: 0.35rem;
+      white-space: nowrap;
+    }
+    .dp-up   { color: var(--color-success); }
+    .dp-down { color: var(--color-danger); }
+    .dp-flat { color: var(--color-text-dim); }
+
     /* ── Daily Change Badge (account list table) ─────────────────────────── */
     .day-change-badge {
       font-size: 0.78rem;

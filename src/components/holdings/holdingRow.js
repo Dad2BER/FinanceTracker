@@ -7,13 +7,19 @@ import { showStockInfo } from "./stockInfoModal.js";
 
 /**
  * Creates a table row element for a holding.
+ * @param {string} accountId
+ * @param {object} holding
+ * @param {object|null} prices        { symbol: price }
+ * @param {object}      quoteDetails  { symbol: { dp, d } } — daily % / $ change
+ * @param {boolean}     pricesLoading
  */
-export function createHoldingRow(accountId, holding, prices, pricesLoading) {
+export function createHoldingRow(accountId, holding, prices, quoteDetails, pricesLoading) {
   const tr = document.createElement("tr");
 
   const isCash = holding.assetType === "cash";
   const price = isCash ? 1 : (prices ? prices[holding.symbol] : undefined);
   const value = price !== undefined ? price * holding.shares : undefined;
+  const detail = (!isCash && quoteDetails) ? quoteDetails[holding.symbol] : null;
 
   let priceCell, valueCell;
 
@@ -24,7 +30,8 @@ export function createHoldingRow(accountId, holding, prices, pricesLoading) {
     priceCell = `<td class="align-right"><span class="loading-spinner" aria-label="Loading"></span></td>`;
     valueCell = `<td class="align-right"><span class="loading-spinner" aria-label="Loading"></span></td>`;
   } else if (price !== undefined) {
-    priceCell = `<td class="align-right price-cell">${formatCurrency(price)}</td>`;
+    const dpHtml = buildDpBadge(detail?.dp);
+    priceCell = `<td class="align-right price-cell">${formatCurrency(price)}${dpHtml}</td>`;
     valueCell = `<td class="align-right value-cell">${formatCurrency(value)}</td>`;
   } else {
     priceCell = `<td class="align-right dim">—</td>`;
@@ -80,6 +87,19 @@ export function createHoldingRow(accountId, holding, prices, pricesLoading) {
   );
 
   return tr;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Returns an HTML string for the daily % change badge, or "" if unavailable.
+ * dp > 0 → green, dp < 0 → red, dp === 0 → dim.
+ */
+function buildDpBadge(dp) {
+  if (dp === null || dp === undefined) return "";
+  const sign = dp > 0 ? "+" : "";
+  const cls = dp > 0 ? "dp-up" : dp < 0 ? "dp-down" : "dp-flat";
+  return ` <span class="dp-badge ${cls}">${sign}${dp.toFixed(2)}%</span>`;
 }
 
 function escHtml(str) {

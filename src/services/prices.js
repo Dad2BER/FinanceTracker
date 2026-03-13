@@ -23,10 +23,10 @@ export async function fetchQuotes(symbols) {
   const now = Date.now();
 
   // ── Step 1: Finnhub ───────────────────────────────────────────────────────
-  const freshPrices = await fetchFinnhubQuotes(symbols);
+  const { priceMap: finnhubPrices, detailsMap: quoteDetails } = await fetchFinnhubQuotes(symbols);
 
   // ── Step 2: Alpha Vantage for anything Finnhub missed ─────────────────────
-  let merged = { ...freshPrices };
+  let merged = { ...finnhubPrices };
   if (window.__AV_API_KEY__) {
     const missing = symbols.filter((s) => merged[s] === undefined);
     if (missing.length > 0) {
@@ -73,7 +73,8 @@ export async function fetchQuotes(symbols) {
   }
 
   savePriceCache(updatedCache);
-  return { prices: result, needsManualEntry };
+  // quoteDetails: { symbol: { dp, d } } — daily % and $ change, Finnhub only
+  return { prices: result, needsManualEntry, quoteDetails };
 }
 
 /**
