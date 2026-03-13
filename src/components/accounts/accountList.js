@@ -2,6 +2,27 @@ import { renderSummaryCards } from "../dashboard/summaryCards.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 
+// ── Helper: compute $ change vs previous recorded day ─────────────────────────
+
+/**
+ * Returns the dollar change between `currentTotal` and the most recent
+ * valueHistory entry whose date is before today, or null if unavailable.
+ */
+function computeDayChange(account, currentTotal) {
+  if (currentTotal === null) return null;
+  const history = account.valueHistory;
+  if (!history || history.length === 0) return null;
+
+  const today = new Date().toISOString().slice(0, 10);
+  // Find the newest entry strictly before today
+  const prev = [...history]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .find((e) => e.date < today);
+  if (!prev) return null;
+
+  return currentTotal - prev.value;
+}
+
 // ── Helper: build one account table ──────────────────────────────────────────
 
 function buildAccountTable(entries, countLabel, onSelectAccount) {
@@ -35,10 +56,20 @@ function buildAccountTable(entries, countLabel, onSelectAccount) {
     const tr = document.createElement("tr");
     tr.style.cursor = "pointer";
 
-    // Name
+    // Name (with daily change badge if history available)
     const nameCell = document.createElement("td");
     nameCell.className = "symbol-cell";
     nameCell.textContent = account.name;
+
+    const delta = computeDayChange(account, total);
+    if (delta !== null && Math.abs(delta) >= 0.01) {
+      const badge = document.createElement("span");
+      badge.className = "day-change-badge";
+      const sign = delta > 0 ? "+" : "-";
+      badge.textContent = ` (${sign}${formatCurrency(Math.abs(delta))})`;
+      badge.style.color = delta > 0 ? "var(--color-success)" : "var(--color-danger)";
+      nameCell.appendChild(badge);
+    }
 
     // Count (holdings or transactions)
     const countCell = document.createElement("td");
