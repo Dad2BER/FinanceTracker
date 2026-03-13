@@ -119,6 +119,7 @@ function render() {
       container,
       accounts,
       prices,
+      quoteDetails,
       pricesLoading,
       pricesError,
       (accountId) => {

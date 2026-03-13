@@ -2,23 +2,38 @@ import { renderSummaryCards } from "../dashboard/summaryCards.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 
-// ── Helper: compute $ change vs previous recorded day ─────────────────────────
+// ── Day-change helpers ────────────────────────────────────────────────────────
 
 /**
- * Returns the dollar change vs the previous recorded day.
- *
- * Priority:
- *  1. Most recent valueHistory entry with date < today (works for all account types
- *     once at least two days of data have been recorded).
- *  2. Ledger fallback: sum of today's transactions (works on day one — no stored
- *     history required).  Asset accounts need two days of price history.
+ * Asset accounts: compute daily $ change directly from Finnhub quoteDetails.
+ * Works immediately — no stored history required.
+ * Returns null if no quoteDetails are available for any holding.
  */
-function computeDayChange(account, currentTotal) {
+function computeAssetDayChange(account, quoteDetails) {
+  if (!quoteDetails || Object.keys(quoteDetails).length === 0) return null;
+  let sum = 0;
+  let hasAny = false;
+  (account.holdings || []).forEach((h) => {
+    if (h.assetType === "cash") return;
+    const d = quoteDetails[h.symbol]?.d;
+    if (d !== null && d !== undefined) {
+      sum += h.shares * d;
+      hasAny = true;
+    }
+  });
+  return hasAny ? sum : null;
+}
+
+/**
+ * Ledger accounts: daily $ change from stored valueHistory (preferred) or,
+ * on the first run, the net of today's transactions.
+ */
+function computeLedgerDayChange(account, currentTotal) {
   if (currentTotal === null) return null;
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // ── 1. Stored history (preferred) ──────────────────────────────────────────
+  // Prefer stored history
   const history = account.valueHistory;
   if (history && history.length > 0) {
     const prev = [...history]
@@ -27,19 +42,19 @@ function computeDayChange(account, currentTotal) {
     if (prev) return currentTotal - prev.value;
   }
 
-  // ── 2. Ledger fallback: today's transactions ────────────────────────────────
-  if (account.accountType === "ledger") {
-    const todayNet = (account.transactions || [])
-      .filter((t) => t.date === today)
-      .reduce((sum, t) => sum + t.amount, 0);
-    if (todayNet !== 0) return todayNet;
-  }
-
-  return null;
+  // Fallback: sum today's transactions
+  const todayNet = (account.transactions || [])
+    .filter((t) => t.date === today)
+    .reduce((sum, t) => sum + t.amount, 0);
+  return todayNet !== 0 ? todayNet : null;
 }
 
-// ── Helper: build one account table ──────────────────────────────────────────
+// ── Table builder ─────────────────────────────────────────────────────────────
 
+/**
+ * Builds a table for a list of account entries.
+ * Each entry is { account, total, dayChange } — dayChange is pre-computed.
+ */
 function buildAccountTable(entries, countLabel, onSelectAccount) {
   const wrapper = document.createElement("div");
   wrapper.className = "table-wrapper";
@@ -67,22 +82,21 @@ function buildAccountTable(entries, countLabel, onSelectAccount) {
 
   const tbody = wrapper.querySelector("tbody");
 
-  entries.forEach(({ account, total }) => {
+  entries.forEach(({ account, total, dayChange }) => {
     const tr = document.createElement("tr");
     tr.style.cursor = "pointer";
 
-    // Name (with daily change badge if history available)
+    // Name — with pre-computed daily change badge
     const nameCell = document.createElement("td");
     nameCell.className = "symbol-cell";
     nameCell.textContent = account.name;
 
-    const delta = computeDayChange(account, total);
-    if (delta !== null && Math.abs(delta) >= 0.01) {
+    if (dayChange !== null && Math.abs(dayChange) >= 0.01) {
       const badge = document.createElement("span");
       badge.className = "day-change-badge";
-      const sign = delta > 0 ? "+" : "-";
-      badge.textContent = ` (${sign}${formatCurrency(Math.abs(delta))})`;
-      badge.style.color = delta > 0 ? "var(--color-success)" : "var(--color-danger)";
+      const sign = dayChange > 0 ? "+" : "-";
+      badge.textContent = ` (${sign}${formatCurrency(Math.abs(dayChange))})`;
+      badge.style.color = dayChange > 0 ? "var(--color-success)" : "var(--color-danger)";
       nameCell.appendChild(badge);
     }
 
@@ -125,6 +139,29 @@ function buildAccountTable(entries, countLabel, onSelectAccount) {
   return wrapper;
 }
 
+// ── Section title helper ──────────────────────────────────────────────────────
+
+/**
+ * Creates an <h3> section title. If dayChangeTotal is non-null and significant,
+ * appends a coloured "(+$X today)" badge after the total.
+ */
+function buildSectionTitle(name, sum, dayChangeTotal) {
+  const h3 = document.createElement("h3");
+  h3.className = "section-title";
+  h3.textContent = sum === null ? `${name} (loading…)` : `${name} (${formatCurrency(sum)})`;
+
+  if (dayChangeTotal !== null && Math.abs(dayChangeTotal) >= 0.01) {
+    const badge = document.createElement("span");
+    badge.className = "day-change-badge";
+    const sign = dayChangeTotal > 0 ? "+" : "-";
+    badge.textContent = ` (${sign}${formatCurrency(Math.abs(dayChangeTotal))} today)`;
+    badge.style.color = dayChangeTotal > 0 ? "var(--color-success)" : "var(--color-danger)";
+    h3.appendChild(badge);
+  }
+
+  return h3;
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 /**
@@ -134,6 +171,7 @@ export function renderAccountList(
   container,
   accounts,
   prices,
+  quoteDetails,
   pricesLoading,
   pricesError,
   onSelectAccount,
@@ -181,7 +219,7 @@ export function renderAccountList(
     container.appendChild(cardsSection);
 
     // ── Separate assets vs ledgers ────────────────────────────────────────────
-    const assetAccounts = accounts.filter((a) => a.accountType !== "ledger");
+    const assetAccounts  = accounts.filter((a) => a.accountType !== "ledger");
     const ledgerAccounts = accounts.filter((a) => a.accountType === "ledger");
 
     function computeTotal(account) {
@@ -197,13 +235,35 @@ export function renderAccountList(
           }, 0);
     }
 
-    function toEntries(accs) {
-      const entries = accs.map((a) => ({ account: a, total: computeTotal(a) }));
+    // Build entries with pre-computed dayChange per account
+    function toEntries(accs, isAsset) {
+      const entries = accs.map((a) => {
+        const total = computeTotal(a);
+        const dayChange = isAsset
+          ? (pricesLoading ? null : computeAssetDayChange(a, quoteDetails))
+          : computeLedgerDayChange(a, total);
+        return { account: a, total, dayChange };
+      });
       if (!pricesLoading && prices !== null) {
         entries.sort((a, b) => (b.total ?? -Infinity) - (a.total ?? -Infinity));
       }
       return entries;
     }
+
+    const assetEntries  = toEntries(assetAccounts,  true);
+    const ledgerEntries = toEntries(ledgerAccounts, false);
+
+    // Section totals
+    const assetSum = assetEntries.every((e) => e.total !== null)
+      ? assetEntries.reduce((s, e) => s + (e.total ?? 0), 0)
+      : null;
+    const ledgerSum = ledgerEntries.reduce((s, e) => s + (e.total ?? 0), 0);
+
+    // Total daily change across all asset accounts (null if nothing available)
+    const assetDayChanges = assetEntries.map((e) => e.dayChange).filter((d) => d !== null);
+    const assetDayTotal   = assetDayChanges.length > 0
+      ? assetDayChanges.reduce((s, d) => s + d, 0)
+      : null;
 
     // ── Split table layout ────────────────────────────────────────────────────
     const section = document.createElement("div");
@@ -212,36 +272,16 @@ export function renderAccountList(
     const grid = document.createElement("div");
     grid.className = "accounts-grid";
 
-    const assetEntries  = toEntries(assetAccounts);
-    const ledgerEntries = toEntries(ledgerAccounts);
-
-    // Sum totals — null means prices still loading for that account
-    const assetSum = assetEntries.every((e) => e.total !== null)
-      ? assetEntries.reduce((s, e) => s + (e.total ?? 0), 0)
-      : null;
-    const ledgerSum = ledgerEntries.reduce((s, e) => s + (e.total ?? 0), 0);
-
-    function sectionLabel(name, sum) {
-      if (sum === null) return `${name} (loading…)`;
-      return `${name} (${formatCurrency(sum)})`;
-    }
-
-    // Assets column
+    // Assets column — section title carries the total daily change badge
     const assetsCol = document.createElement("div");
     assetsCol.className = "accounts-col";
-    const assetsTitle = document.createElement("h3");
-    assetsTitle.className = "section-title";
-    assetsTitle.textContent = sectionLabel("Assets", assetSum);
-    assetsCol.appendChild(assetsTitle);
+    assetsCol.appendChild(buildSectionTitle("Assets", assetSum, assetDayTotal));
     assetsCol.appendChild(buildAccountTable(assetEntries, "Holdings", onSelectAccount));
 
-    // Ledgers column
+    // Ledgers column — no day-change total in header for ledgers
     const liabCol = document.createElement("div");
     liabCol.className = "accounts-col";
-    const liabTitle = document.createElement("h3");
-    liabTitle.className = "section-title";
-    liabTitle.textContent = sectionLabel("Ledgers", ledgerSum);
-    liabCol.appendChild(liabTitle);
+    liabCol.appendChild(buildSectionTitle("Ledgers", ledgerSum, null));
     liabCol.appendChild(buildAccountTable(ledgerEntries, "Transactions", onSelectAccount));
 
     grid.appendChild(assetsCol);
@@ -253,6 +293,6 @@ export function renderAccountList(
   header.querySelector("#add-account-btn").addEventListener("click", () => showAccountForm());
   header.querySelector("#refresh-btn").addEventListener("click", onRefresh);
   header.querySelector("#update-key-btn").addEventListener("click", onUpdateKey);
-  if (onReports) header.querySelector("#reports-btn").addEventListener("click", onReports);
+  if (onReports)  header.querySelector("#reports-btn").addEventListener("click", onReports);
   if (onSettings) header.querySelector("#settings-btn").addEventListener("click", onSettings);
 }
