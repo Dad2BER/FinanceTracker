@@ -7,6 +7,7 @@ import { renderHoldingList } from "./components/holdings/holdingList.js";
 import { renderTransactionList } from "./components/ledger/transactionList.js";
 import { renderSettingsView } from "./components/settings/settingsView.js";
 import { renderReportsView } from "./components/reports/reportsView.js";
+import { renderAssetsView } from "./components/assets/assetsView.js";
 
 // ── Tab / Page Definitions ─────────────────────────────────────────────────────
 const TABS = [
@@ -16,7 +17,10 @@ const TABS = [
 ];
 
 const TAB_PAGES = {
-  finances:   [{ id: "summary",       label: "Portfolio" }],
+  finances:   [
+    { id: "summary", label: "Portfolio" },
+    { id: "assets",  label: "Assets" },
+  ],
   reports:    [{ id: "ytd-spending",  label: "Year to Date Spending" }],
   retirement: [],   // no pages yet
 };
@@ -26,6 +30,7 @@ const PAGE_TO_SIDEBAR = {
   "summary":        "summary",
   "account-detail": "summary",
   "ledger-detail":  "summary",
+  "assets":         "assets",
   "ytd-spending":   "ytd-spending",
 };
 
@@ -257,6 +262,15 @@ function render() {
         () => navigateTo({ tab: "finances", page: "summary" }),
         () => loadPrices(symbols)
       );
+    } else if (view.page === "assets") {
+      renderAssetsView(
+        shellContent,
+        getAccounts(),
+        prices,
+        quoteDetails,
+        pricesLoading,
+        pricesError
+      );
     } else if (view.page === "ledger-detail") {
       const account = getAccount(view.accountId);
       if (!account) {
@@ -382,7 +396,7 @@ function loadPricesForCurrentView() {
   if (view.tab === "settings" || view.tab === "retirement" || view.tab === "reports") return;
   if (view.tab === "finances") {
     if (view.page === "ledger-detail") return;
-    if (view.page === "summary") {
+    if (view.page === "summary" || view.page === "assets") {
       loadPrices(uniqueSymbols(getAccounts()));
     } else if (view.page === "account-detail") {
       const account = getAccount(view.accountId);

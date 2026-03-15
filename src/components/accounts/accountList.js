@@ -1,4 +1,5 @@
 import { renderSummaryCards } from "../dashboard/summaryCards.js";
+import { showAccountForm } from "./accountForm.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 
