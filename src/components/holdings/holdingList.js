@@ -19,8 +19,7 @@ export function renderHoldingList(
   pricesLoading,
   pricesError,
   onBack,
-  onRefresh,
-  onUpdateKey
+  onRefresh
 ) {
   container.innerHTML = "";
 
@@ -40,7 +39,6 @@ export function renderHoldingList(
         <button class="btn btn-ghost btn-sm" id="edit-account-btn" title="Edit account">&#9881; Edit</button>
         <button class="btn btn-ghost btn-sm btn-danger" id="delete-account-btn" title="Delete account">&#128465; Delete</button>
         <button class="btn btn-ghost btn-sm" id="refresh-btn">&#8635; Refresh Prices</button>
-        <button class="btn btn-ghost btn-sm" id="update-key-btn" title="Update API key">&#128273; API Key</button>
         <button class="btn btn-primary" id="add-holding-btn">+ Add Holding</button>
       </div>
     </div>
@@ -150,7 +148,6 @@ export function renderHoldingList(
     });
   });
   header.querySelector("#refresh-btn").addEventListener("click", onRefresh);
-  header.querySelector("#update-key-btn").addEventListener("click", onUpdateKey);
   header.querySelector("#add-holding-btn").addEventListener("click", () =>
     showHoldingForm(account.id)
   );

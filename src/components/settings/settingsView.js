@@ -1,5 +1,6 @@
 import { Modal } from "../ui/modal.js";
 import { showConfirmDialog } from "../ui/confirmDialog.js";
+import { saveApiKey, saveAvKey } from "../../services/storage.js";
 import {
   addCategory, updateCategory, deleteCategory,
   addSubcategory, updateSubcategory, deleteSubcategory,
@@ -131,7 +132,7 @@ function showPayeeEditPrompt({ initialName = "", initialSubcategoryId = null, ca
 
 // ── Main View ─────────────────────────────────────────────────────────────────
 
-export function renderSettingsView(container, categories, payees, onBack) {
+export function renderSettingsView(container, categories, payees, onBack, onApiKeyChanged) {
   // ── Validate & default selection state ──────────────────────────────────────
   if (!categories.find((c) => c.id === _selectedCategoryId)) {
     _selectedCategoryId = categories[0]?.id ?? null;
@@ -145,7 +146,7 @@ export function renderSettingsView(container, categories, payees, onBack) {
 
   // Helper: re-render this view with fresh state (called after selection changes)
   function rerender() {
-    renderSettingsView(container, getCategories(), getPayees(), onBack);
+    renderSettingsView(container, getCategories(), getPayees(), onBack, onApiKeyChanged);
   }
 
   container.innerHTML = "";
@@ -163,6 +164,56 @@ export function renderSettingsView(container, categories, payees, onBack) {
   `;
   container.appendChild(header);
   header.querySelector("#back-btn").addEventListener("click", onBack);
+
+  // ── API Keys ─────────────────────────────────────────────────────────────────
+  const apiSection = document.createElement("div");
+  apiSection.className = "settings-api-section";
+  apiSection.innerHTML = `
+    <div class="settings-section-label">API Keys</div>
+    <div class="form-group">
+      <label for="finnhub-key-input">Finnhub API Key</label>
+      <div class="settings-api-input-row">
+        <input id="finnhub-key-input" type="text" class="form-input key-input"
+          value="${escHtml(window.__FINNHUB_API_KEY__ || "")}"
+          placeholder="Paste your Finnhub key" autocomplete="off" spellcheck="false">
+        <button class="btn btn-secondary btn-sm" id="save-finnhub-btn">Save</button>
+      </div>
+      <div class="settings-api-saved" id="finnhub-saved"></div>
+    </div>
+    <div class="form-group">
+      <label for="av-key-input">Alpha Vantage API Key <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional — for mutual funds)</span></label>
+      <div class="settings-api-input-row">
+        <input id="av-key-input" type="text" class="form-input key-input"
+          value="${escHtml(window.__AV_API_KEY__ || "")}"
+          placeholder="Paste your Alpha Vantage key" autocomplete="off" spellcheck="false">
+        <button class="btn btn-secondary btn-sm" id="save-av-btn">Save</button>
+      </div>
+      <div class="settings-api-saved" id="av-saved"></div>
+    </div>
+  `;
+  container.appendChild(apiSection);
+
+  // Save Finnhub key
+  apiSection.querySelector("#save-finnhub-btn").addEventListener("click", () => {
+    const key = apiSection.querySelector("#finnhub-key-input").value.trim();
+    window.__FINNHUB_API_KEY__ = key;
+    saveApiKey(key);
+    if (onApiKeyChanged) onApiKeyChanged(key, undefined);
+    const msg = apiSection.querySelector("#finnhub-saved");
+    msg.textContent = "Saved!";
+    setTimeout(() => { msg.textContent = ""; }, 2500);
+  });
+
+  // Save Alpha Vantage key
+  apiSection.querySelector("#save-av-btn").addEventListener("click", () => {
+    const key = apiSection.querySelector("#av-key-input").value.trim();
+    window.__AV_API_KEY__ = key;
+    if (key) saveAvKey(key);
+    if (onApiKeyChanged) onApiKeyChanged(undefined, key);
+    const msg = apiSection.querySelector("#av-saved");
+    msg.textContent = "Saved!";
+    setTimeout(() => { msg.textContent = ""; }, 2500);
+  });
 
   // ── Database Backup / Restore ────────────────────────────────────────────────
   const dbSection = document.createElement("div");

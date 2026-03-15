@@ -8,13 +8,31 @@ import { renderTransactionList } from "./components/ledger/transactionList.js";
 import { renderSettingsView } from "./components/settings/settingsView.js";
 import { renderReportsView } from "./components/reports/reportsView.js";
 
+// ── Tab / Page Definitions ─────────────────────────────────────────────────────
+const TABS = [
+  { id: "finances",   label: "Finances" },
+  { id: "reports",    label: "Reports" },
+  { id: "retirement", label: "Retirement" },
+];
+
+const TAB_PAGES = {
+  finances:   [{ id: "summary",       label: "Summary" }],
+  reports:    [{ id: "ytd-spending",  label: "Year to Date Spending" }],
+  retirement: [],   // no pages yet
+};
+
+// Maps a content-page id to the sidebar entry that should appear active
+const PAGE_TO_SIDEBAR = {
+  "summary":        "summary",
+  "account-detail": "summary",
+  "ledger-detail":  "summary",
+  "ytd-spending":   "ytd-spending",
+};
+
 // ── View State ────────────────────────────────────────────────────────────────
-// { page: "accounts" }
-// | { page: "account-detail", accountId: string }
-// | { page: "ledger-detail", accountId: string }
-// | { page: "settings" }
-// | { page: "reports" }
-let view = { page: "accounts" };
+// { tab: "finances"|"reports"|"retirement"|"settings", page: string, accountId?: string }
+let view = { tab: "finances", page: "summary" };
+let prevNonSettingsView = null; // saved when navigating to settings
 
 // ── Price State ───────────────────────────────────────────────────────────────
 let prices = null;
@@ -24,6 +42,12 @@ let pricesError = null;
 
 const container = document.getElementById("app");
 
+// ── Shell State ───────────────────────────────────────────────────────────────
+let shellInitialized = false;
+let shellContent = null;
+let shellSidebar = null;
+let shellHeaderEl = null;
+
 // ── API Key Setup ─────────────────────────────────────────────────────────────
 function initApiKey() {
   const stored = loadApiKey();
@@ -32,7 +56,8 @@ function initApiKey() {
   if (avStored) window.__AV_API_KEY__ = avStored;
 }
 
-function showApiKeyScreen(isUpdate = false) {
+// ── First-Run API Key Screen ──────────────────────────────────────────────────
+function showApiKeyScreen() {
   container.innerHTML = "";
 
   const screen = document.createElement("div");
@@ -56,10 +81,7 @@ function showApiKeyScreen(isUpdate = false) {
           placeholder="Paste your Alpha Vantage key here" autocomplete="off" spellcheck="false">
       </div>
       <div class="key-actions">
-        ${isUpdate ? '<button class="btn btn-secondary" id="key-cancel">Cancel</button>' : ""}
-        <button class="btn btn-primary key-submit" id="key-submit">
-          ${isUpdate ? "Save Key" : "Get Started"}
-        </button>
+        <button class="btn btn-primary key-submit" id="key-submit">Get Started</button>
       </div>
       <p class="key-hint">
         No account needed — get a free key at
@@ -72,14 +94,6 @@ function showApiKeyScreen(isUpdate = false) {
   const input = screen.querySelector("#api-key-input");
   const avInput = screen.querySelector("#av-key-input");
   const errEl = screen.querySelector("#api-key-err");
-
-  if (isUpdate) {
-    input.value = window.__FINNHUB_API_KEY__ || "";
-    avInput.value = window.__AV_API_KEY__ || "";
-    screen.querySelector("#key-cancel").addEventListener("click", () => {
-      render();
-    });
-  }
 
   screen.querySelector("#key-submit").addEventListener("click", () => {
     const key = input.value.trim();
@@ -94,10 +108,8 @@ function showApiKeyScreen(isUpdate = false) {
     const avKey = avInput.value.trim();
     window.__AV_API_KEY__ = avKey;
     if (avKey) saveAvKey(avKey);
-    // Reset prices so they reload with the new keys
-    prices = null;
-    pricesLoading = false;
-    pricesError = null;
+    // Initialize the shell and start the app
+    initShell();
     render();
     loadPricesForCurrentView();
   });
@@ -110,75 +122,189 @@ function showApiKeyScreen(isUpdate = false) {
   setTimeout(() => input.focus(), 50);
 }
 
+// ── Shell Init ────────────────────────────────────────────────────────────────
+function initShell() {
+  if (shellInitialized) return;
+  shellInitialized = true;
+
+  container.innerHTML = "";
+
+  // Header
+  const header = document.createElement("header");
+  header.id = "shell-header";
+  header.innerHTML = `
+    <div class="shell-brand">Finance Tracker</div>
+    <nav class="shell-tabs" id="shell-tabs">
+      ${TABS.map((t) => `<button class="shell-tab" data-tab="${t.id}">${t.label}</button>`).join("")}
+    </nav>
+    <div class="shell-end">
+      <button class="shell-icon-btn" id="shell-settings-btn" title="Settings">&#9881; Settings</button>
+    </div>
+  `;
+
+  // Body
+  const body = document.createElement("div");
+  body.id = "shell-body";
+
+  shellSidebar = document.createElement("nav");
+  shellSidebar.id = "shell-sidebar";
+
+  shellContent = document.createElement("main");
+  shellContent.id = "shell-content";
+
+  body.appendChild(shellSidebar);
+  body.appendChild(shellContent);
+  container.appendChild(header);
+  container.appendChild(body);
+
+  // Tab click handlers
+  header.querySelectorAll(".shell-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      const firstPage = TAB_PAGES[tab]?.[0]?.id ?? "placeholder";
+      navigateTo({ tab, page: firstPage });
+    });
+  });
+
+  // Settings button — toggles in/out of settings
+  header.querySelector("#shell-settings-btn").addEventListener("click", () => {
+    if (view.tab === "settings") {
+      navigateTo(prevNonSettingsView || { tab: "finances", page: "summary" });
+    } else {
+      prevNonSettingsView = { ...view };
+      navigateTo({ tab: "settings", page: "settings" });
+    }
+  });
+
+  shellHeaderEl = header;
+}
+
+// ── Shell Update ──────────────────────────────────────────────────────────────
+function updateShell() {
+  if (!shellInitialized) return;
+
+  // Active tab highlight
+  shellHeaderEl.querySelectorAll(".shell-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === view.tab);
+  });
+
+  // Settings button active state
+  shellHeaderEl.querySelector("#shell-settings-btn")
+    .classList.toggle("active", view.tab === "settings");
+
+  // Sidebar pages
+  const pages = TAB_PAGES[view.tab] ?? [];
+  shellSidebar.innerHTML = "";
+  const activeSidebarPage = PAGE_TO_SIDEBAR[view.page] ?? view.page;
+
+  pages.forEach(({ id, label }) => {
+    const item = document.createElement("button");
+    item.className = "sidebar-item" + (activeSidebarPage === id ? " active" : "");
+    item.textContent = label;
+    item.addEventListener("click", () => {
+      navigateTo({ tab: view.tab, page: id });
+    });
+    shellSidebar.appendChild(item);
+  });
+
+  // Hide sidebar when there are no pages (retirement, settings)
+  const shellBody = container.querySelector("#shell-body");
+  if (shellBody) shellBody.classList.toggle("no-sidebar", pages.length === 0);
+}
+
 // ── Rendering ─────────────────────────────────────────────────────────────────
 function render() {
-  if (view.page === "accounts") {
-    const accounts = getAccounts();
-    const symbols = uniqueSymbols(accounts);
-    renderAccountList(
-      container,
-      accounts,
-      prices,
-      quoteDetails,
-      pricesLoading,
-      pricesError,
-      (accountId) => {
-        const account = getAccount(accountId);
-        navigateTo(
-          account?.accountType === "ledger"
-            ? { page: "ledger-detail", accountId }
-            : { page: "account-detail", accountId }
-        );
-      },
-      () => loadPrices(symbols),
-      () => showApiKeyScreen(true),
-      () => navigateTo({ page: "settings" }),
-      () => navigateTo({ page: "reports" })
-    );
-  } else if (view.page === "account-detail") {
-    const account = getAccount(view.accountId);
-    if (!account) {
-      navigateTo({ page: "accounts" });
-      return;
+  if (!shellInitialized) return;
+  updateShell();
+
+  if (view.tab === "finances") {
+    if (view.page === "summary") {
+      const accounts = getAccounts();
+      const symbols = uniqueSymbols(accounts);
+      renderAccountList(
+        shellContent,
+        accounts,
+        prices,
+        quoteDetails,
+        pricesLoading,
+        pricesError,
+        (accountId) => {
+          const account = getAccount(accountId);
+          navigateTo(
+            account?.accountType === "ledger"
+              ? { tab: "finances", page: "ledger-detail", accountId }
+              : { tab: "finances", page: "account-detail", accountId }
+          );
+        },
+        () => loadPrices(symbols)
+      );
+    } else if (view.page === "account-detail") {
+      const account = getAccount(view.accountId);
+      if (!account) {
+        navigateTo({ tab: "finances", page: "summary" });
+        return;
+      }
+      const symbols = account.holdings
+        .filter((h) => h.assetType !== "cash")
+        .map((h) => h.symbol);
+      renderHoldingList(
+        shellContent,
+        account,
+        prices,
+        quoteDetails,
+        pricesLoading,
+        pricesError,
+        () => navigateTo({ tab: "finances", page: "summary" }),
+        () => loadPrices(symbols)
+      );
+    } else if (view.page === "ledger-detail") {
+      const account = getAccount(view.accountId);
+      if (!account) {
+        navigateTo({ tab: "finances", page: "summary" });
+        return;
+      }
+      renderTransactionList(
+        shellContent,
+        account,
+        getCategories(),
+        getPayees(),
+        () => navigateTo({ tab: "finances", page: "summary" })
+      );
     }
-    const symbols = account.holdings.filter((h) => h.assetType !== "cash").map((h) => h.symbol);
-    renderHoldingList(
-      container,
-      account,
-      prices,
-      quoteDetails,
-      pricesLoading,
-      pricesError,
-      () => navigateTo({ page: "accounts" }),
-      () => loadPrices(symbols),
-      () => showApiKeyScreen(true)
-    );
-  } else if (view.page === "ledger-detail") {
-    const account = getAccount(view.accountId);
-    if (!account) {
-      navigateTo({ page: "accounts" });
-      return;
-    }
-    renderTransactionList(
-      container,
-      account,
-      getCategories(),
-      getPayees(),
-      () => navigateTo({ page: "accounts" })
-    );
-  } else if (view.page === "settings") {
-    renderSettingsView(
-      container,
-      getCategories(),
-      getPayees(),
-      () => navigateTo({ page: "accounts" })
-    );
-  } else if (view.page === "reports") {
+  } else if (view.tab === "reports") {
     renderReportsView(
-      container,
+      shellContent,
       getAccounts(),
       getCategories(),
-      () => navigateTo({ page: "accounts" })
+      () => navigateTo({ tab: "finances", page: "summary" })
+    );
+  } else if (view.tab === "retirement") {
+    shellContent.innerHTML = `
+      <div style="padding:2rem 0">
+        <h2 style="margin-bottom:0.5rem">Retirement</h2>
+        <p style="color:var(--color-text-dim)">Retirement planning tools are coming soon.</p>
+      </div>
+    `;
+  } else if (view.tab === "settings") {
+    renderSettingsView(
+      shellContent,
+      getCategories(),
+      getPayees(),
+      () => navigateTo(prevNonSettingsView || { tab: "finances", page: "summary" }),
+      (finnhubKey, avKey) => {
+        if (finnhubKey !== undefined) {
+          window.__FINNHUB_API_KEY__ = finnhubKey;
+          saveApiKey(finnhubKey);
+        }
+        if (avKey !== undefined) {
+          window.__AV_API_KEY__ = avKey;
+          if (avKey) saveAvKey(avKey);
+        }
+        // Reset price state so it reloads with new keys on next navigation
+        prices = null;
+        pricesLoading = false;
+        pricesError = null;
+      }
     );
   }
 }
@@ -253,17 +379,29 @@ async function loadPrices(symbols) {
 }
 
 function loadPricesForCurrentView() {
-  if (view.page === "ledger-detail" || view.page === "settings" || view.page === "reports") return;
-  if (view.page === "accounts") {
-    loadPrices(uniqueSymbols(getAccounts()));
-  } else {
-    const account = getAccount(view.accountId);
-    if (account) loadPrices(account.holdings.map((h) => h.symbol));
+  if (view.tab === "settings" || view.tab === "retirement" || view.tab === "reports") return;
+  if (view.tab === "finances") {
+    if (view.page === "ledger-detail") return;
+    if (view.page === "summary") {
+      loadPrices(uniqueSymbols(getAccounts()));
+    } else if (view.page === "account-detail") {
+      const account = getAccount(view.accountId);
+      if (account) {
+        const symbols = account.holdings
+          .filter((h) => h.assetType !== "cash")
+          .map((h) => h.symbol);
+        loadPrices(symbols);
+      }
+    }
   }
 }
 
 function uniqueSymbols(accounts) {
-  return [...new Set(accounts.flatMap((a) => a.holdings.filter((h) => h.assetType !== "cash").map((h) => h.symbol)))];
+  return [...new Set(
+    accounts.flatMap((a) =>
+      a.holdings.filter((h) => h.assetType !== "cash").map((h) => h.symbol)
+    )
+  )];
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -271,12 +409,15 @@ async function completeBootstrap(data) {
   initState(data ?? { accounts: [] });
   initApiKey();
   subscribe(() => {
-    render();
-    if (!pricesLoading) loadPricesForCurrentView();
+    if (shellInitialized) {
+      render();
+      if (!pricesLoading) loadPricesForCurrentView();
+    }
   });
   if (!window.__FINNHUB_API_KEY__) {
-    showApiKeyScreen(false);
+    showApiKeyScreen();
   } else {
+    initShell();
     render();
     loadPricesForCurrentView();
   }
