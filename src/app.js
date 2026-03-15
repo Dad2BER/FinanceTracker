@@ -16,7 +16,7 @@ const TABS = [
 ];
 
 const TAB_PAGES = {
-  finances:   [{ id: "summary",       label: "Summary" }],
+  finances:   [{ id: "summary",       label: "Portfolio" }],
   reports:    [{ id: "ytd-spending",  label: "Year to Date Spending" }],
   retirement: [],   // no pages yet
 };

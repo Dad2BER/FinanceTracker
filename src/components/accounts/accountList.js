@@ -179,20 +179,6 @@ export function renderAccountList(
 ) {
   container.innerHTML = "";
 
-  // ── Header ──────────────────────────────────────────────────────────────────
-  const header = document.createElement("div");
-  header.className = "view-header";
-  header.innerHTML = `
-    <div class="detail-title-row">
-      <h1>My Portfolio</h1>
-      <div class="header-actions">
-        <button class="btn btn-ghost btn-sm" id="refresh-btn" title="Refresh prices">&#8635; Refresh Prices</button>
-        <button class="btn btn-primary" id="add-account-btn">+ Add Account</button>
-      </div>
-    </div>
-  `;
-  container.appendChild(header);
-
   if (pricesError) {
     const errEl = document.createElement("div");
     errEl.className = "error-banner";
@@ -284,6 +270,15 @@ export function renderAccountList(
     container.appendChild(section);
   }
 
-  header.querySelector("#add-account-btn").addEventListener("click", () => showAccountForm());
-  header.querySelector("#refresh-btn").addEventListener("click", onRefresh);
+  // ── Bottom action bar ─────────────────────────────────────────────────────
+  const actionsBar = document.createElement("div");
+  actionsBar.className = "portfolio-actions";
+  actionsBar.innerHTML = `
+    <button class="btn btn-ghost btn-sm" id="refresh-btn" title="Refresh prices">&#8635; Refresh Prices</button>
+    <button class="btn btn-primary" id="add-account-btn">+ Add Account</button>
+  `;
+  container.appendChild(actionsBar);
+
+  actionsBar.querySelector("#refresh-btn").addEventListener("click", onRefresh);
+  actionsBar.querySelector("#add-account-btn").addEventListener("click", () => showAccountForm());
 }
