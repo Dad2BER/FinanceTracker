@@ -7,8 +7,9 @@ const PALETTE = [
   "#fd9644", "#2bcbba", "#a29bfe", "#fd79a8", "#00b4d8",
 ];
 
-// ── Persisted mode selection across navigations ────────────────────────────────
-let _reportMode = "ytd";  // "ytd" | "last12"
+// ── Persisted state across navigations ────────────────────────────────────────
+let _reportMode = "ytd";   // "ytd" | "last12"
+let _hiddenCats = new Set(); // categories toggled off by the user
 
 function monthLabel(yyyyMM) {
   const [y, m] = yyyyMM.split("-");
@@ -184,12 +185,15 @@ export function renderReportsView(container, accounts, categories, onBack) {
   const allCats = [...new Set(txs.map(t => t.cat))].sort();
   const catColor = new Map(allCats.map((c, i) => [c, PALETTE[i % PALETTE.length]]));
 
-  // Bar chart data: net-negative categories only, with subcategory breakdown
+  // Visible = all minus those the user toggled off
+  const visibleCats = allCats.filter(c => !_hiddenCats.has(c));
+
+  // Bar chart data: net-negative visible categories only, with subcategory breakdown
   const chartData = months.map(month => {
     const cm = monthMap.get(month) || new Map();
     let total = 0;
     const segments = [];
-    allCats.forEach(cat => {
+    visibleCats.forEach(cat => {
       const sm = cm.get(cat) || new Map();
       let catNet = 0;
       sm.forEach(subTotal => { catNet += subTotal; });
@@ -420,19 +424,52 @@ export function renderReportsView(container, accounts, categories, onBack) {
   const ro = new ResizeObserver(() => drawChart());
   ro.observe(svgWrap);
 
-  // Bar chart legend (category colour key)
+  // Bar chart legend — clickable category toggles
+  const legendWrap = document.createElement("div");
+  legendWrap.className = "report-legend-wrap";
+
+  const legendHeader = document.createElement("div");
+  legendHeader.className = "report-legend-header";
+  const legendTitle = document.createElement("span");
+  legendTitle.className = "report-legend-title";
+  legendTitle.textContent = "Categories";
+  legendHeader.appendChild(legendTitle);
+
+  // "Show all" link — only visible when at least one category is hidden
+  const hiddenInView = allCats.filter(c => _hiddenCats.has(c));
+  if (hiddenInView.length > 0) {
+    const showAll = document.createElement("button");
+    showAll.className = "btn-link";
+    showAll.textContent = `Show all (${hiddenInView.length} hidden)`;
+    showAll.addEventListener("click", () => {
+      allCats.forEach(c => _hiddenCats.delete(c));
+      rerender();
+    });
+    legendHeader.appendChild(showAll);
+  }
+  legendWrap.appendChild(legendHeader);
+
   const barLegend = document.createElement("div");
   barLegend.className = "report-legend";
   allCats.forEach(cat => {
+    const isHidden = _hiddenCats.has(cat);
     const item = document.createElement("div");
-    item.className = "legend-item";
+    item.className = "legend-item legend-toggle" + (isHidden ? " legend-toggle--off" : "");
+    item.title = isHidden ? "Click to show" : "Click to hide";
     item.innerHTML = `
       <span class="legend-dot" style="background:${catColor.get(cat)}"></span>
       <span>${cat}</span>
     `;
+    item.addEventListener("click", () => {
+      if (_hiddenCats.has(cat)) _hiddenCats.delete(cat);
+      else _hiddenCats.add(cat);
+      rerender();
+    });
     barLegend.appendChild(item);
   });
-  barCol.appendChild(barLegend);
+
+  legendWrap.appendChild(barLegend);
+  barCol.appendChild(legendWrap);
 
   // ── Pie chart column ─────────────────────────────────────────────────────────
   const pieCol = document.createElement("div");
@@ -465,11 +502,11 @@ export function renderReportsView(container, accounts, categories, onBack) {
       : `${monthLabel(first)} – ${monthLabel(last)}`;
     pieCard.appendChild(sub);
 
-    // Compute average spending per category across completed months
+    // Compute average spending per visible category across completed months
     const catTotals = new Map();
     completedMonths.forEach(month => {
       const cm = monthMap.get(month) || new Map();
-      allCats.forEach(cat => {
+      visibleCats.forEach(cat => {
         const sm = cm.get(cat) || new Map();
         let catNet = 0;
         sm.forEach(subTotal => { catNet += subTotal; });

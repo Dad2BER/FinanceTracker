@@ -1217,11 +1217,51 @@
     .report-chart-wrap svg {
       display: block;
     }
+    .report-legend-wrap {
+      margin-top: 0.5rem;
+    }
+    .report-legend-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.35rem;
+    }
+    .report-legend-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-dim);
+    }
+    .btn-link {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 0.78rem;
+      color: var(--color-accent);
+      cursor: pointer;
+    }
+    .btn-link:hover { text-decoration: underline; }
     .report-legend {
       display: flex;
       flex-wrap: wrap;
       gap: 0.6rem 1.25rem;
       padding: 0.25rem 0;
+    }
+    .legend-toggle {
+      cursor: pointer;
+      border-radius: 4px;
+      padding: 0.1rem 0.25rem;
+      margin: -0.1rem -0.25rem;
+      transition: opacity 0.15s;
+      user-select: none;
+    }
+    .legend-toggle:hover { opacity: 0.75; }
+    .legend-toggle--off {
+      opacity: 0.35;
+    }
+    .legend-toggle--off span:last-child {
+      text-decoration: line-through;
     }
     @media (max-width: 680px) {
       .report-body { flex-direction: column; }
