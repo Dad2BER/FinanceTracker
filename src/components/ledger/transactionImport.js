@@ -243,11 +243,11 @@ export function showImportModal(accountId, categories, payees, existingTransacti
       </div>
       <div id="imp-split-wrap" ${!hasSplit ? 'style="display:none"' : ""}>
         <div class="form-group">
-          <label for="imp-debit-col">Debit Column <span style="font-weight:400">(charges / purchases → positive)</span></label>
+          <label for="imp-debit-col">Debit Column <span style="font-weight:400">(charges / purchases — stored as negative)</span></label>
           ${buildSel("imp-debit-col", det.debitCol !== -1 ? det.debitCol : 0, true)}
         </div>
         <div class="form-group">
-          <label for="imp-credit-col">Credit Column <span style="font-weight:400">(payments / credits → negative)</span></label>
+          <label for="imp-credit-col">Credit Column <span style="font-weight:400">(payments / deposits — stored as positive)</span></label>
           ${buildSel("imp-credit-col", det.creditCol !== -1 ? det.creditCol : 0, true)}
         </div>
       </div>
@@ -278,8 +278,9 @@ export function showImportModal(accountId, categories, payees, existingTransacti
       } else if (cfg.type === "split") {
         const d = cfg.debitCol >= 0 ? parseAmount(row[cfg.debitCol]) : null;
         const c = cfg.creditCol >= 0 ? parseAmount(row[cfg.creditCol]) : null;
-        if (d !== null && d !== 0) return Math.abs(d);
-        if (c !== null && c !== 0) return -Math.abs(c);
+        // Debits (charges) → stored as negative; Credits (payments) → stored as positive
+        if (d !== null && d !== 0) return -Math.abs(d);
+        if (c !== null && c !== 0) return Math.abs(c);
         return null;
       }
       return null;
