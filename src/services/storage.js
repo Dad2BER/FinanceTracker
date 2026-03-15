@@ -1,17 +1,67 @@
-const API_KEY_STORAGE    = "financetracker_apikey";
-const AV_KEY_STORAGE     = "financetracker_avkey";
+const API_KEY_STORAGE     = "financetracker_apikey";
+const AV_KEY_STORAGE      = "financetracker_avkey";
 const PRICE_CACHE_STORAGE = "financetracker_pricecache";
+const ACTIVE_PROFILE_KEY  = "financetracker_active_profile";
 
-// ── Data persistence via REST API ─────────────────────────────────────────────
+// ── Profile API ───────────────────────────────────────────────────────────────
 
-export async function loadData() {
-  const res = await fetch("/api/data");
+export async function loadProfiles() {
+  const res = await fetch("/api/profiles");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-export function saveData(data) {
-  fetch("/api/data", {
+export async function createProfile(name) {
+  const res = await fetch("/api/profiles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function renameProfile(id, name) {
+  const res = await fetch(`/api/profiles/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function deleteProfile(id) {
+  const res = await fetch(`/api/profiles/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ── Active profile persistence (localStorage) ─────────────────────────────────
+
+export function loadActiveProfileId() {
+  return window.localStorage.getItem(ACTIVE_PROFILE_KEY) || null;
+}
+
+export function saveActiveProfileId(id) {
+  window.localStorage.setItem(ACTIVE_PROFILE_KEY, id);
+}
+
+// ── Data persistence via REST API ─────────────────────────────────────────────
+
+export async function loadData(profileId) {
+  const res = await fetch(`/api/data?profile=${encodeURIComponent(profileId)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export function saveData(data, profileId) {
+  fetch(`/api/data?profile=${encodeURIComponent(profileId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

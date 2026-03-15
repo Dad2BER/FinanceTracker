@@ -1,6 +1,10 @@
 import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState, recordAccountValue } from "./state.js";
 import { fetchQuotes } from "./services/prices.js";
-import { loadData, loadApiKey, saveApiKey, loadAvKey, saveAvKey } from "./services/storage.js";
+import {
+  loadData, loadApiKey, saveApiKey, loadAvKey, saveAvKey,
+  loadProfiles, createProfile, renameProfile, deleteProfile,
+  loadActiveProfileId, saveActiveProfileId,
+} from "./services/storage.js";
 import { showManualPriceModal } from "./components/ui/manualPriceModal.js";
 import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
@@ -21,7 +25,7 @@ const TAB_PAGES = {
     { id: "summary", label: "Portfolio" },
     { id: "assets",  label: "Assets" },
   ],
-  reports:    [{ id: "ytd-spending",  label: "Year to Date Spending" }],
+  reports:    [{ id: "ytd-spending",  label: "Monthly Spend" }],
   retirement: [],   // no pages yet
 };
 
@@ -39,6 +43,10 @@ const PAGE_TO_SIDEBAR = {
 let view = { tab: "finances", page: "summary" };
 let prevNonSettingsView = null; // saved when navigating to settings
 
+// ── Profile State ─────────────────────────────────────────────────────────────
+let profiles = [];        // [{ id, name, createdAt }, ...]
+let currentProfileId = null;
+
 // ── Price State ───────────────────────────────────────────────────────────────
 let prices = null;
 let quoteDetails = {};   // { symbol: { dp, d } } — daily % and $ change
@@ -52,6 +60,15 @@ let shellInitialized = false;
 let shellContent = null;
 let shellSidebar = null;
 let shellHeaderEl = null;
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 // ── API Key Setup ─────────────────────────────────────────────────────────────
 function initApiKey() {
@@ -127,6 +144,45 @@ function showApiKeyScreen() {
   setTimeout(() => input.focus(), 50);
 }
 
+// ── Profile Switching ─────────────────────────────────────────────────────────
+async function switchProfile(id) {
+  if (id === currentProfileId) return;
+  currentProfileId = id;
+  saveActiveProfileId(id);
+
+  // Reset price state
+  prices = null;
+  quoteDetails = {};
+  pricesLoading = false;
+  pricesError = null;
+
+  // Load the new profile's data and reinitialize state
+  try {
+    const data = await loadData(id);
+    initState(data, id);
+  } catch (e) {
+    console.error("[switchProfile] failed to load data:", e);
+  }
+
+  // Navigate back to the portfolio page and re-render
+  view = { tab: "finances", page: "summary" };
+  prevNonSettingsView = null;
+  render();
+  loadPricesForCurrentView();
+}
+
+// ── Profile Prompt ────────────────────────────────────────────────────────────
+function showNewProfilePrompt() {
+  const name = window.prompt("New profile name:");
+  if (!name || !name.trim()) return;
+  createProfile(name.trim()).then((newProfile) => {
+    profiles = [...profiles, newProfile];
+    updateShell();   // refresh dropdown with the new profile listed
+  }).catch((e) => {
+    alert("Failed to create profile: " + e.message);
+  });
+}
+
 // ── Shell Init ────────────────────────────────────────────────────────────────
 function initShell() {
   if (shellInitialized) return;
@@ -137,15 +193,46 @@ function initShell() {
   // Header
   const header = document.createElement("header");
   header.id = "shell-header";
-  header.innerHTML = `
-    <div class="shell-brand">Finance Tracker</div>
-    <nav class="shell-tabs" id="shell-tabs">
-      ${TABS.map((t) => `<button class="shell-tab" data-tab="${t.id}">${t.label}</button>`).join("")}
-    </nav>
-    <div class="shell-end">
-      <button class="shell-icon-btn" id="shell-settings-btn" title="Settings">&#9881; Settings</button>
-    </div>
-  `;
+
+  // Brand
+  const brand = document.createElement("div");
+  brand.className = "shell-brand";
+  brand.textContent = "Finance Tracker";
+
+  // Profile switcher
+  const profileWrap = document.createElement("div");
+  profileWrap.className = "profile-switcher-wrap";
+  profileWrap.id = "shell-profile-wrap";
+
+  const profileBtn = document.createElement("button");
+  profileBtn.className = "profile-switcher";
+  profileBtn.id = "shell-profile-btn";
+  profileBtn.innerHTML = `<span id="shell-profile-name"></span><span class="profile-chevron">▾</span>`;
+
+  const profileDropdown = document.createElement("div");
+  profileDropdown.className = "profile-dropdown";
+  profileDropdown.id = "profile-dropdown";
+
+  profileWrap.appendChild(profileBtn);
+  profileWrap.appendChild(profileDropdown);
+
+  // Tab bar
+  const tabs = document.createElement("nav");
+  tabs.className = "shell-tabs";
+  tabs.id = "shell-tabs";
+  tabs.innerHTML = TABS.map((t) =>
+    `<button class="shell-tab" data-tab="${t.id}">${t.label}</button>`
+  ).join("");
+
+  // Settings end
+  const end = document.createElement("div");
+  end.className = "shell-end";
+  end.innerHTML = `<button class="shell-icon-btn" id="shell-settings-btn" title="Settings">&#9881; Settings</button>`;
+
+  header.appendChild(brand);
+  header.appendChild(profileWrap);
+  header.appendChild(tabs);
+  header.appendChild(end);
 
   // Body
   const body = document.createElement("div");
@@ -162,8 +249,8 @@ function initShell() {
   container.appendChild(header);
   container.appendChild(body);
 
-  // Tab click handlers
-  header.querySelectorAll(".shell-tab").forEach((btn) => {
+  // ── Tab click handlers ──────────────────────────────────────────────────────
+  tabs.querySelectorAll(".shell-tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       const tab = btn.dataset.tab;
       const firstPage = TAB_PAGES[tab]?.[0]?.id ?? "placeholder";
@@ -171,7 +258,7 @@ function initShell() {
     });
   });
 
-  // Settings button — toggles in/out of settings
+  // ── Settings button ─────────────────────────────────────────────────────────
   header.querySelector("#shell-settings-btn").addEventListener("click", () => {
     if (view.tab === "settings") {
       navigateTo(prevNonSettingsView || { tab: "finances", page: "summary" });
@@ -180,6 +267,22 @@ function initShell() {
       navigateTo({ tab: "settings", page: "settings" });
     }
   });
+
+  // ── Profile dropdown toggle ─────────────────────────────────────────────────
+  profileBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = profileDropdown.classList.toggle("open");
+    if (open) {
+      // Position dropdown below the button
+      profileDropdown.style.minWidth = profileWrap.offsetWidth + "px";
+    }
+  });
+
+  // Close dropdown when clicking anywhere outside
+  document.addEventListener("click", () => {
+    profileDropdown.classList.remove("open");
+  });
+  profileDropdown.addEventListener("click", (e) => e.stopPropagation());
 
   shellHeaderEl = header;
 }
@@ -196,6 +299,42 @@ function updateShell() {
   // Settings button active state
   shellHeaderEl.querySelector("#shell-settings-btn")
     .classList.toggle("active", view.tab === "settings");
+
+  // Profile button label
+  const currentProfile = profiles.find((p) => p.id === currentProfileId);
+  const profileNameEl = shellHeaderEl.querySelector("#shell-profile-name");
+  if (profileNameEl) profileNameEl.textContent = currentProfile?.name ?? "Profile";
+
+  // Rebuild profile dropdown items
+  const dropdown = shellHeaderEl.querySelector("#profile-dropdown");
+  if (dropdown) {
+    dropdown.innerHTML = "";
+
+    profiles.forEach((p) => {
+      const item = document.createElement("button");
+      item.className = "profile-dropdown-item" + (p.id === currentProfileId ? " active" : "");
+      item.innerHTML = `<span class="profile-check">${p.id === currentProfileId ? "✓" : ""}</span>${escHtml(p.name)}`;
+      item.addEventListener("click", () => {
+        dropdown.classList.remove("open");
+        switchProfile(p.id);
+      });
+      dropdown.appendChild(item);
+    });
+
+    // Divider + New Profile
+    const divider = document.createElement("div");
+    divider.className = "profile-dropdown-divider";
+    dropdown.appendChild(divider);
+
+    const newItem = document.createElement("button");
+    newItem.className = "profile-dropdown-item profile-dropdown-new";
+    newItem.textContent = "+ New Profile…";
+    newItem.addEventListener("click", () => {
+      dropdown.classList.remove("open");
+      showNewProfilePrompt();
+    });
+    dropdown.appendChild(newItem);
+  }
 
   // Sidebar pages
   const pages = TAB_PAGES[view.tab] ?? [];
@@ -318,6 +457,27 @@ function render() {
         prices = null;
         pricesLoading = false;
         pricesError = null;
+      },
+      // Profile props passed to settings view
+      {
+        profiles,
+        currentProfileId,
+        onCreateProfile: async (name) => {
+          const newProfile = await createProfile(name);
+          profiles = [...profiles, newProfile];
+          updateShell();
+          return newProfile;
+        },
+        onRenameProfile: async (id, name) => {
+          const updated = await renameProfile(id, name);
+          profiles = profiles.map((p) => p.id === id ? { ...p, name: updated.name } : p);
+          updateShell();
+        },
+        onDeleteProfile: async (id) => {
+          await deleteProfile(id);
+          profiles = profiles.filter((p) => p.id !== id);
+          updateShell();
+        },
       }
     );
   }
@@ -420,7 +580,7 @@ function uniqueSymbols(accounts) {
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function completeBootstrap(data) {
-  initState(data ?? { accounts: [] });
+  initState(data ?? { accounts: [] }, currentProfileId);
   initApiKey();
   subscribe(() => {
     if (shellInitialized) {
@@ -439,9 +599,9 @@ async function completeBootstrap(data) {
 
 // ── Entry Point ───────────────────────────────────────────────────────────────
 (async () => {
-  let data;
+  // ── Step 1: Load profile list ───────────────────────────────────────────────
   try {
-    data = await loadData();
+    profiles = await loadProfiles();
   } catch (e) {
     container.innerHTML = `
       <div class="key-screen">
@@ -456,5 +616,31 @@ async function completeBootstrap(data) {
       </div>`;
     return;
   }
+
+  // ── Step 2: Determine active profile ────────────────────────────────────────
+  const savedId = loadActiveProfileId();
+  const savedProfile = profiles.find((p) => p.id === savedId);
+  currentProfileId = savedProfile ? savedProfile.id : profiles[0]?.id;
+  if (currentProfileId) saveActiveProfileId(currentProfileId);
+
+  // ── Step 3: Load data for the active profile ─────────────────────────────────
+  let data;
+  try {
+    data = await loadData(currentProfileId);
+  } catch (e) {
+    container.innerHTML = `
+      <div class="key-screen">
+        <div class="key-card">
+          <h1 class="key-title">Finance Tracker</h1>
+          <p class="key-subtitle" style="color:var(--color-danger)">
+            Could not connect to the local server.<br>
+            Make sure <code>server.py</code> is running on port 3000.
+          </p>
+          <p class="key-hint" style="margin-top:1rem">${e.message}</p>
+        </div>
+      </div>`;
+    return;
+  }
+
   await completeBootstrap(data);
 })();

@@ -7,6 +7,9 @@ const PALETTE = [
   "#fd9644", "#2bcbba", "#a29bfe", "#fd79a8", "#00b4d8",
 ];
 
+// ── Persisted mode selection across navigations ────────────────────────────────
+let _reportMode = "ytd";  // "ytd" | "last12"
+
 function monthLabel(yyyyMM) {
   const [y, m] = yyyyMM.split("-");
   const d = new Date(+y, +m - 1, 1);
@@ -27,22 +30,67 @@ function niceStep(maxVal, steps = 5) {
   return nice * mag;
 }
 
+// Return YYYY-MM string, N months before (year, month) — both 1-indexed
+function subtractMonths(year, month, n) {
+  let m = month - n;
+  let y = year;
+  while (m <= 0) { m += 12; y -= 1; }
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
 export function renderReportsView(container, accounts, categories, onBack) {
   container.innerHTML = "";
+
+  // re-render helper (preserves mode)
+  function rerender() {
+    renderReportsView(container, accounts, categories, onBack);
+  }
 
   // ── Header ──────────────────────────────────────────────────────────────────
   const header = document.createElement("div");
   header.className = "view-header";
-  header.innerHTML = `
-    <div class="detail-title-row">
-      <div style="display:flex;align-items:center;gap:0.75rem">
-        <button class="btn btn-ghost btn-sm" id="back-btn">&#8592; Back</button>
-        <h1>Spending Report</h1>
-      </div>
-    </div>
-  `;
+
+  const titleRow = document.createElement("div");
+  titleRow.className = "detail-title-row";
+  titleRow.style.flexWrap = "wrap";
+  titleRow.style.gap = "0.75rem";
+
+  const leftGroup = document.createElement("div");
+  leftGroup.style.cssText = "display:flex;align-items:center;gap:0.75rem";
+
+  const backBtn = document.createElement("button");
+  backBtn.className = "btn btn-ghost btn-sm";
+  backBtn.id = "back-btn";
+  backBtn.innerHTML = "&#8592; Back";
+  backBtn.addEventListener("click", onBack);
+
+  const h1 = document.createElement("h1");
+  h1.textContent = "Monthly Spend";
+
+  leftGroup.appendChild(backBtn);
+  leftGroup.appendChild(h1);
+
+  // Mode toggle
+  const modeToggle = document.createElement("div");
+  modeToggle.className = "report-mode-toggle";
+
+  const ytdBtn = document.createElement("button");
+  ytdBtn.className = "report-mode-btn" + (_reportMode === "ytd" ? " active" : "");
+  ytdBtn.textContent = "Year to Date";
+  ytdBtn.addEventListener("click", () => { _reportMode = "ytd"; rerender(); });
+
+  const l12Btn = document.createElement("button");
+  l12Btn.className = "report-mode-btn" + (_reportMode === "last12" ? " active" : "");
+  l12Btn.textContent = "Last 12 Months";
+  l12Btn.addEventListener("click", () => { _reportMode = "last12"; rerender(); });
+
+  modeToggle.appendChild(ytdBtn);
+  modeToggle.appendChild(l12Btn);
+
+  titleRow.appendChild(leftGroup);
+  titleRow.appendChild(modeToggle);
+  header.appendChild(titleRow);
   container.appendChild(header);
-  header.querySelector("#back-btn").addEventListener("click", onBack);
 
   // ── Data Processing ──────────────────────────────────────────────────────────
   const ledgers = accounts.filter(a => a.accountType === "ledger");
@@ -55,11 +103,39 @@ export function renderReportsView(container, accounts, categories, onBack) {
     return;
   }
 
-  // Current year — show Jan through current month
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1; // 1-indexed
-  const yearPrefix = `${currentYear}-`;
+  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
+
+  // ── Month range depends on mode ──────────────────────────────────────────────
+  let months;       // ordered array of YYYY-MM strings to display
+  let startMonthStr;
+  let emptyMsg;
+
+  if (_reportMode === "ytd") {
+    // Jan through current month of the current year
+    months = [];
+    for (let m = 1; m <= currentMonth; m++) {
+      months.push(`${currentYear}-${String(m).padStart(2, "0")}`);
+    }
+    startMonthStr = months[0];
+    emptyMsg = `No transactions for ${currentYear} (excluding Transfers).`;
+  } else {
+    // Last 12 Months: current month + 12 prior months = 13 months total
+    startMonthStr = subtractMonths(currentYear, currentMonth, 12);
+    months = [];
+    let [iterY, iterM] = startMonthStr.split("-").map(Number);
+    while (
+      iterY < currentYear ||
+      (iterY === currentYear && iterM <= currentMonth)
+    ) {
+      months.push(`${iterY}-${String(iterM).padStart(2, "0")}`);
+      iterM++;
+      if (iterM > 12) { iterM = 1; iterY++; }
+    }
+    emptyMsg = "No transactions in the last 12 months (excluding Transfers).";
+  }
 
   // Category and subcategory lookups
   const catById = new Map(categories.map(c => [c.id, c.name]));
@@ -68,12 +144,12 @@ export function renderReportsView(container, accounts, categories, onBack) {
     cat.subcategories.forEach(sub => subcatById.set(sub.id, sub.name));
   });
 
-  // Collect current-year transactions excluding Transfer
+  // Collect transactions in range, excluding Transfer
   const txs = [];
   ledgers.forEach(acct => {
     (acct.transactions || []).forEach(tx => {
       const month = (tx.date || "").slice(0, 7);
-      if (month.length !== 7 || !month.startsWith(yearPrefix)) return;
+      if (month.length !== 7 || month < startMonthStr || month > currentMonthStr) return;
       const catName = tx.categoryId ? catById.get(tx.categoryId) : null;
       if (catName === "Transfer") return;
       const subcatName = tx.subcategoryId ? subcatById.get(tx.subcategoryId) : null;
@@ -89,15 +165,9 @@ export function renderReportsView(container, accounts, categories, onBack) {
   if (txs.length === 0) {
     const el = document.createElement("div");
     el.className = "empty-state";
-    el.innerHTML = `<p>No transactions for ${currentYear} (excluding Transfers).</p>`;
+    el.innerHTML = `<p>${emptyMsg}</p>`;
     container.appendChild(el);
     return;
-  }
-
-  // Fixed month list: Jan through current month
-  const months = [];
-  for (let m = 1; m <= currentMonth; m++) {
-    months.push(`${currentYear}-${String(m).padStart(2, "0")}`);
   }
 
   // Group: month → category → subcategory → total
@@ -110,7 +180,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
     sm.set(subcat, (sm.get(subcat) || 0) + amount);
   });
 
-  // All categories across current year, sorted, with colors
+  // All categories in range, sorted, with colours
   const allCats = [...new Set(txs.map(t => t.cat))].sort();
   const catColor = new Map(allCats.map((c, i) => [c, PALETTE[i % PALETTE.length]]));
 
@@ -139,8 +209,10 @@ export function renderReportsView(container, accounts, categories, onBack) {
 
   const maxTotal = Math.max(...chartData.map(d => d.total), 0);
 
-  // Complete months (before current month) used for the pie average
-  const completedMonths = months.filter(m => parseInt(m.split("-")[1]) < currentMonth);
+  // Completed months — used for the monthly average pie
+  // YTD:    exclude current month (month number < currentMonth, same year so safe)
+  // Last12: exclude current month (all months except the last one)
+  const completedMonths = months.filter(m => m !== currentMonthStr);
 
   // ── Section ──────────────────────────────────────────────────────────────────
   const section = document.createElement("div");
@@ -266,6 +338,22 @@ export function renderReportsView(container, accounts, categories, onBack) {
     yLine.setAttribute("stroke", "#2e3248");
     g.appendChild(yLine);
 
+    // Current-month column highlight (subtle background)
+    if (months.length > 0) {
+      const curIdx = months.indexOf(currentMonthStr);
+      if (curIdx >= 0) {
+        const cx = curIdx * slotW + slotW / 2;
+        const hiW = slotW;
+        const hi = document.createElementNS(NS, "rect");
+        hi.setAttribute("x", cx - hiW / 2);
+        hi.setAttribute("y", 0);
+        hi.setAttribute("width", hiW);
+        hi.setAttribute("height", cH);
+        hi.setAttribute("fill", "rgba(99,102,241,0.06)");
+        g.appendChild(hi);
+      }
+    }
+
     // One <g> per column, segment rects get individual hover events
     chartData.forEach((d, i) => {
       const cx = i * slotW + slotW / 2;
@@ -283,6 +371,8 @@ export function renderReportsView(container, accounts, categories, onBack) {
         rect.setAttribute("height", segH);
         rect.setAttribute("fill", catColor.get(seg.cat));
         rect.setAttribute("rx", 2);
+        // Dim the current month slightly to signal it's in-progress
+        if (d.month === currentMonthStr) rect.setAttribute("opacity", "0.7");
         rect.style.cursor = "default";
         rect.addEventListener("mouseenter", () => showTooltip(d.month, seg, cx, cW));
         rect.addEventListener("mouseleave", hideTooltip);
@@ -297,7 +387,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
           lbl.setAttribute("x", cx);
           lbl.setAttribute("y", ty - 4);
           lbl.setAttribute("text-anchor", "middle");
-          lbl.setAttribute("fill", "#718096");
+          lbl.setAttribute("fill", d.month === currentMonthStr ? "#6366f1" : "#718096");
           lbl.setAttribute("font-size", "10");
           lbl.textContent = d.total >= 1000
             ? `$${(d.total / 1000).toFixed(1)}k`
@@ -306,15 +396,16 @@ export function renderReportsView(container, accounts, categories, onBack) {
         }
       }
 
-      // X-axis label (rotated)
+      // X-axis label (rotated) — current month shown in accent colour
       const lx = cx, ly = cH + 10;
       const xlabel = document.createElementNS(NS, "text");
       xlabel.setAttribute("x", lx);
       xlabel.setAttribute("y", ly);
       xlabel.setAttribute("text-anchor", "end");
-      xlabel.setAttribute("fill", "#718096");
+      xlabel.setAttribute("fill", d.month === currentMonthStr ? "#6366f1" : "#718096");
       xlabel.setAttribute("font-size", "11");
       xlabel.setAttribute("transform", `rotate(-40,${lx},${ly})`);
+      if (d.month === currentMonthStr) xlabel.setAttribute("font-weight", "600");
       xlabel.textContent = monthLabel(d.month);
       colGroup.appendChild(xlabel);
 
@@ -374,7 +465,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
       : `${monthLabel(first)} – ${monthLabel(last)}`;
     pieCard.appendChild(sub);
 
-    // Compute average spending per category across complete months
+    // Compute average spending per category across completed months
     const catTotals = new Map();
     completedMonths.forEach(month => {
       const cm = monthMap.get(month) || new Map();
