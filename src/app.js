@@ -25,7 +25,7 @@ const TAB_PAGES = {
     { id: "summary", label: "Portfolio" },
     { id: "assets",  label: "Assets" },
   ],
-  reports:    [{ id: "ytd-spending",  label: "Year to Date Spending" }],
+  reports:    [{ id: "ytd-spending",  label: "Monthly Spend" }],
   retirement: [],   // no pages yet
 };
 
