@@ -152,6 +152,106 @@
       min-width: 0;
     }
 
+    /* ── Profile Switcher (shell header) ─────────────────────────────────── */
+    .profile-switcher-wrap {
+      position: relative;
+      flex-shrink: 0;
+    }
+    .profile-switcher {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.3rem 0.65rem;
+      color: var(--color-text);
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s;
+      max-width: 200px;
+    }
+    .profile-switcher:hover { border-color: var(--color-primary); }
+    #shell-profile-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+    }
+    .profile-chevron {
+      font-size: 0.7rem;
+      color: var(--color-text-dim);
+      flex-shrink: 0;
+    }
+    .profile-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      min-width: 180px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow);
+      z-index: 200;
+      overflow: hidden;
+    }
+    .profile-dropdown.open { display: block; }
+    .profile-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.55rem 0.9rem;
+      background: none;
+      border: none;
+      color: var(--color-text);
+      font-size: 0.875rem;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.1s;
+      white-space: nowrap;
+    }
+    .profile-dropdown-item:hover { background: var(--color-surface-2); }
+    .profile-dropdown-item.active { font-weight: 600; color: var(--color-primary); }
+    .profile-check {
+      width: 1rem;
+      flex-shrink: 0;
+      text-align: center;
+      font-size: 0.8rem;
+    }
+    .profile-dropdown-divider {
+      height: 1px;
+      background: var(--color-border);
+      margin: 0.2rem 0;
+    }
+    .profile-dropdown-new { color: var(--color-text-dim); font-style: italic; }
+    .profile-dropdown-new:hover { color: var(--color-text); background: var(--color-surface-2); }
+
+    /* ── Settings Profiles Section ────────────────────────────────────────── */
+    .settings-profiles-section {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.1rem 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .settings-profile-list { margin-bottom: 0.5rem; }
+    .settings-profile-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--color-border);
+      gap: 0.5rem;
+    }
+    .settings-profile-row:last-child { border-bottom: none; }
+    .settings-profile-name { flex: 1; font-size: 0.9rem; }
+    .settings-profile-row.current .settings-profile-name { font-weight: 600; color: var(--color-primary); }
+    .settings-profile-actions { display: flex; gap: 0.15rem; flex-shrink: 0; }
+    .settings-profile-add { padding-top: 0.5rem; }
+
     /* ── Settings API Keys Section ───────────────────────────────────────── */
     .settings-api-section {
       background: var(--color-surface);

@@ -132,7 +132,7 @@ function showPayeeEditPrompt({ initialName = "", initialSubcategoryId = null, ca
 
 // ── Main View ─────────────────────────────────────────────────────────────────
 
-export function renderSettingsView(container, categories, payees, onBack, onApiKeyChanged) {
+export function renderSettingsView(container, categories, payees, onBack, onApiKeyChanged, profileProps) {
   // ── Validate & default selection state ──────────────────────────────────────
   if (!categories.find((c) => c.id === _selectedCategoryId)) {
     _selectedCategoryId = categories[0]?.id ?? null;
@@ -146,7 +146,7 @@ export function renderSettingsView(container, categories, payees, onBack, onApiK
 
   // Helper: re-render this view with fresh state (called after selection changes)
   function rerender() {
-    renderSettingsView(container, getCategories(), getPayees(), onBack, onApiKeyChanged);
+    renderSettingsView(container, getCategories(), getPayees(), onBack, onApiKeyChanged, profileProps);
   }
 
   container.innerHTML = "";
@@ -164,6 +164,115 @@ export function renderSettingsView(container, categories, payees, onBack, onApiK
   `;
   container.appendChild(header);
   header.querySelector("#back-btn").addEventListener("click", onBack);
+
+  // ── Profiles ──────────────────────────────────────────────────────────────────
+  if (profileProps) {
+    const { profiles, currentProfileId, onCreateProfile, onRenameProfile, onDeleteProfile } = profileProps;
+
+    const profileSection = document.createElement("div");
+    profileSection.className = "settings-profiles-section";
+
+    const profileLabel = document.createElement("div");
+    profileLabel.className = "settings-section-label";
+    profileLabel.textContent = "Profiles";
+    profileSection.appendChild(profileLabel);
+
+    const profileList = document.createElement("div");
+    profileList.className = "settings-profile-list";
+
+    profiles.forEach((p) => {
+      const row = document.createElement("div");
+      const isCurrent = p.id === currentProfileId;
+      row.className = "settings-profile-row" + (isCurrent ? " current" : "");
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "settings-profile-name";
+      nameSpan.textContent = p.name + (isCurrent ? " (current)" : "");
+
+      const actions = document.createElement("span");
+      actions.className = "settings-profile-actions";
+
+      const renBtn = document.createElement("button");
+      renBtn.className = "icon-btn";
+      renBtn.title = "Rename";
+      renBtn.textContent = "✏";
+      renBtn.addEventListener("click", () => {
+        showNamePrompt({
+          title: "Rename Profile",
+          label: "Profile Name",
+          initialValue: p.name,
+          onSave: async (name) => {
+            try {
+              await onRenameProfile(p.id, name);
+              rerender();
+            } catch (e) {
+              alert("Failed to rename profile: " + e.message);
+            }
+          },
+        });
+      });
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "icon-btn icon-btn-danger";
+      delBtn.title = "Delete";
+      delBtn.textContent = "🗑";
+      if (profiles.length <= 1) {
+        delBtn.disabled = true;
+        delBtn.title = "Cannot delete the last profile";
+      } else if (isCurrent) {
+        delBtn.disabled = true;
+        delBtn.title = "Switch to another profile first";
+      }
+      delBtn.addEventListener("click", () => {
+        if (delBtn.disabled) return;
+        showConfirmDialog({
+          title: "Delete Profile",
+          message: `Delete "${p.name}" and ALL its accounts, holdings, transactions, categories, and payees? This cannot be undone.`,
+          onConfirm: async () => {
+            try {
+              await onDeleteProfile(p.id);
+              rerender();
+            } catch (e) {
+              alert("Failed to delete profile: " + e.message);
+            }
+          },
+        });
+      });
+
+      actions.appendChild(renBtn);
+      actions.appendChild(delBtn);
+      row.appendChild(nameSpan);
+      row.appendChild(actions);
+      profileList.appendChild(row);
+    });
+
+    profileSection.appendChild(profileList);
+
+    // Add profile button
+    const addProfileRow = document.createElement("div");
+    addProfileRow.className = "settings-profile-add";
+    const addProfileBtn = document.createElement("button");
+    addProfileBtn.className = "btn btn-secondary btn-sm";
+    addProfileBtn.textContent = "+ Add Profile";
+    addProfileBtn.addEventListener("click", () => {
+      showNamePrompt({
+        title: "Add Profile",
+        label: "Profile Name",
+        onSave: async (name) => {
+          try {
+            await onCreateProfile(name);
+            rerender();
+          } catch (e) {
+            alert("Failed to create profile: " + e.message);
+          }
+        },
+      });
+    });
+    addProfileRow.appendChild(addProfileBtn);
+    profileSection.appendChild(addProfileRow);
+
+    container.appendChild(profileSection);
+  }
 
   // ── API Keys ─────────────────────────────────────────────────────────────────
   const apiSection = document.createElement("div");
