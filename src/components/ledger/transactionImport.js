@@ -332,6 +332,32 @@ export function showImportModal(accountId, categories, payees, existingTransacti
         const desc = (row[descCol] || "").trim();
         const amount = rowAmount(row, cfg);
         if (!date || amount === null) continue;
+
+        // Detect "CASHOVER $ X.XX PURCHASES $ Y.YY" pattern → split into two transactions
+        const splitMatch = desc.match(/CASHOVER\s*\$\s*([\d.,]+)\s*PURCHASES\s*\$\s*([\d.,]+)/i);
+        if (splitMatch) {
+          const firstWord    = desc.split(/\s+/)[0];
+          const cashoverAmt  = -Math.abs(parseAmount(splitMatch[1]) ?? 0);
+          const purchasesAmt = -Math.abs(parseAmount(splitMatch[2]) ?? 0);
+          for (const [suffix, amt] of [["PURCHASES", purchasesAmt], ["CASHOVER", cashoverAmt]]) {
+            const splitPayeeName = `${firstWord} ${suffix}`;
+            const matched = findMatchingPayee(splitPayeeName, payees);
+            const isDupe  = checkIsDuplicate(date, splitPayeeName, amt, existingLookup);
+            parsed.push({
+              date,
+              description: splitPayeeName,
+              amount: amt,
+              matchedPayee: matched,
+              payeeName: matched ? matched.name : splitPayeeName,
+              subcategoryId: matched ? (matched.subcategoryId || null) : null,
+              isNew: !matched,
+              isDuplicate: isDupe,
+              skip: isDupe,
+            });
+          }
+          continue;
+        }
+
         const matched = findMatchingPayee(desc, payees);
         const isDupe = checkIsDuplicate(date, desc, amount, existingLookup);
         parsed.push({
