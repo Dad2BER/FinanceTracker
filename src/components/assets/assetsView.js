@@ -234,5 +234,38 @@ export function renderAssetsView(
     [true, false, true, true, false, false]
   );
 
+  // ── Visible-row value sum in the filter row's Value cell ─────────────────────
+  // The filter row's last <th> (Value column, index 5) is an empty cell — we
+  // display the running sum of visible rows there.  It starts equal to Total
+  // Value and updates live as the user types in any filter.
+  const filterRow = tableWrapper.querySelector(".filter-row");
+  const valueTh   = filterRow?.querySelectorAll("th")[5] ?? null;
+  const sumEl     = valueTh ? document.createElement("span") : null;
+  if (sumEl) {
+    sumEl.className = "filter-col-sum";
+    valueTh.appendChild(sumEl);
+  }
+
+  function updateVisibleSum() {
+    if (!sumEl) return;
+    let sum = 0;
+    tableWrapper.querySelectorAll("tbody tr").forEach((row) => {
+      if (row.style.display === "none") return;
+      // Value cell is the 6th td (index 5); text is formatted currency or "—"
+      const text = (row.querySelectorAll("td")[5]?.textContent ?? "").trim();
+      const num  = parseFloat(text.replace(/[$,]/g, ""));
+      if (!isNaN(num)) sum += num;
+    });
+    sumEl.textContent = formatCurrency(sum);
+  }
+
+  // Set initial sum (all rows visible)
+  updateVisibleSum();
+
+  // filterRow's applyFilters listener fires first (registered on filterRow);
+  // our listener is on the table so it fires afterwards via event bubbling.
+  tableWrapper.querySelector("table").addEventListener("input",  updateVisibleSum);
+  tableWrapper.querySelector("table").addEventListener("change", updateVisibleSum);
+
   container.appendChild(tableWrapper);
 }
