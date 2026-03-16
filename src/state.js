@@ -156,6 +156,33 @@ export function deleteHolding(accountId, holdingId) {
   notify();
 }
 
+// Applies all three kinds of holding changes in one atomic state mutation.
+// updates: [{ holdingId, shares }]
+// deletes: [{ holdingId }]
+// adds:    [{ symbol, shares, origin, assetType }]
+export function applyHoldingsImport(accountId, { updates = [], deletes = [], adds = [] }) {
+  const deleteIds = new Set(deletes.map((d) => d.holdingId));
+  const updateMap = new Map(updates.map((u) => [u.holdingId, u.shares]));
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) => {
+      if (a.id !== accountId) return a;
+      let holdings = (a.holdings || [])
+        .filter((h) => !deleteIds.has(h.id))
+        .map((h) => updateMap.has(h.id) ? { ...h, shares: updateMap.get(h.id) } : h);
+      adds.forEach(({ symbol, shares, origin, assetType }) => {
+        const h = { id: generateId(), symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) };
+        if (origin)    h.origin    = origin;
+        if (assetType) h.assetType = assetType;
+        holdings.push(h);
+      });
+      return { ...a, holdings };
+    }),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
 // ── Transaction CRUD ──────────────────────────────────────────────────────────
 
 export function addTransaction(accountId, { date, payeeName, subcategoryId, tag, amount }) {

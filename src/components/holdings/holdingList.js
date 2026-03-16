@@ -1,5 +1,6 @@
 import { createHoldingRow } from "./holdingRow.js";
 import { showHoldingForm } from "./holdingForm.js";
+import { showHoldingImportModal } from "./holdingImport.js";
 import { showAccountForm } from "../accounts/accountForm.js";
 import { createTaxTypeBadge } from "../accounts/taxTypeBadge.js";
 import { formatCurrency } from "../../utils/currency.js";
@@ -39,6 +40,7 @@ export function renderHoldingList(
         <button class="btn btn-ghost btn-sm" id="edit-account-btn" title="Edit account">&#9881; Edit</button>
         <button class="btn btn-ghost btn-sm btn-danger" id="delete-account-btn" title="Delete account">&#128465; Delete</button>
         <button class="btn btn-ghost btn-sm" id="refresh-btn">&#8635; Refresh Prices</button>
+        ${account.accountType === "asset" ? `<button class="btn btn-ghost btn-sm" id="import-holdings-btn">&#8679; Import</button>` : ""}
         <button class="btn btn-primary" id="add-holding-btn">+ Add Holding</button>
       </div>
     </div>
@@ -148,6 +150,8 @@ export function renderHoldingList(
     });
   });
   header.querySelector("#refresh-btn").addEventListener("click", onRefresh);
+  const importBtn = header.querySelector("#import-holdings-btn");
+  if (importBtn) importBtn.addEventListener("click", () => showHoldingImportModal(account));
   header.querySelector("#add-holding-btn").addEventListener("click", () =>
     showHoldingForm(account.id)
   );
