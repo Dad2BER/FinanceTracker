@@ -191,12 +191,13 @@ function buildLedgerTable(entries, onSelectAccount) {
     );
 
     // Last payment — only meaningful for negative-balance accounts
-    // Looks for "payment" anywhere in the payee name (case-insensitive)
+    // Matches "payment" or "pmt" anywhere in the payee name (case-insensitive)
     let lastPaymentDate = null;
     if (total !== null && total < 0) {
-      const paymentTxs = txs.filter(
-        tx => (tx.payeeName || "").toLowerCase().includes("payment")
-      );
+      const paymentTxs = txs.filter(tx => {
+        const name = (tx.payeeName || "").toLowerCase();
+        return name.includes("payment") || name.includes("pmt");
+      });
       if (paymentTxs.length > 0) {
         lastPaymentDate = paymentTxs.reduce(
           (latest, tx) => (tx.date > (latest || "")) ? tx.date : latest,
