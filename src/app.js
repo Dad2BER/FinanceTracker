@@ -10,7 +10,8 @@ import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
 import { renderTransactionList } from "./components/ledger/transactionList.js";
 import { renderSettingsView } from "./components/settings/settingsView.js";
-import { renderReportsView } from "./components/reports/reportsView.js";
+import { renderReportsView }     from "./components/reports/reportsView.js";
+import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
 import { renderAssetsView } from "./components/assets/assetsView.js";
 
 // ── Tab / Page Definitions ─────────────────────────────────────────────────────
@@ -25,7 +26,10 @@ const TAB_PAGES = {
     { id: "summary", label: "Portfolio" },
     { id: "assets",  label: "Assets" },
   ],
-  reports:    [{ id: "ytd-spending",  label: "Monthly Spend" }],
+  reports:    [
+    { id: "ytd-spending",  label: "Monthly Spend" },
+    { id: "subcat-spend",  label: "Subcategory Spend" },
+  ],
   retirement: [],   // no pages yet
 };
 
@@ -36,6 +40,7 @@ const PAGE_TO_SIDEBAR = {
   "ledger-detail":  "summary",
   "assets":         "assets",
   "ytd-spending":   "ytd-spending",
+  "subcat-spend":   "subcat-spend",
 };
 
 // ── View State ────────────────────────────────────────────────────────────────
@@ -425,12 +430,14 @@ function render() {
       );
     }
   } else if (view.tab === "reports") {
-    renderReportsView(
-      shellContent,
-      getAccounts(),
-      getCategories(),
-      () => navigateTo({ tab: "finances", page: "summary" })
-    );
+    const _reportAccounts   = getAccounts();
+    const _reportCategories = getCategories();
+    const _reportOnBack     = () => navigateTo({ tab: "finances", page: "summary" });
+    if (view.page === "subcat-spend") {
+      renderSubcatSpendView(shellContent, _reportAccounts, _reportCategories, _reportOnBack);
+    } else {
+      renderReportsView(shellContent, _reportAccounts, _reportCategories, _reportOnBack);
+    }
   } else if (view.tab === "retirement") {
     shellContent.innerHTML = `
       <div style="padding:2rem 0">

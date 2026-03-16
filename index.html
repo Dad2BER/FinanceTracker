@@ -1263,6 +1263,33 @@
     .legend-toggle--off span:last-child {
       text-decoration: line-through;
     }
+
+    /* ── Subcategory Spend filter row ────────────────────────────────────── */
+    .subcat-filter-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .subcat-filter-label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--color-text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .subcat-filter-label .form-select {
+      font-size: 0.9rem;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: normal;
+      min-width: 160px;
+    }
+
     @media (max-width: 680px) {
       .report-body { flex-direction: column; }
       .report-pie-col { width: 100%; }
