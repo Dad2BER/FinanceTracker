@@ -1,4 +1,4 @@
-import { deleteTransaction, deleteAccount } from "../../state.js";
+import { deleteTransaction, deleteAccount, toggleTransactionExcluded } from "../../state.js";
 import { showConfirmDialog } from "../ui/confirmDialog.js";
 import { showTransactionForm } from "./transactionForm.js";
 import { showImportModal } from "./transactionImport.js";
@@ -132,6 +132,7 @@ export function renderTransactionList(container, account, categories, payees, on
           <th>Tag</th>
           <th class="align-right">Amount</th>
           <th class="align-right">Balance</th>
+          <th class="align-center">Excl.</th>
           <th class="actions-cell"></th>
         </tr>
       </thead>
@@ -144,6 +145,7 @@ export function renderTransactionList(container, account, categories, payees, on
   displayRows.forEach((tx) => {
     const { categoryName, subcategoryName } = resolveSubcategory(tx.subcategoryId, categories);
     const tr = document.createElement("tr");
+    if (tx.excluded) tr.classList.add("tx-excluded");
 
     const amountClass = tx.amount >= 0 ? "amount-charge" : "amount-payment";
 
@@ -155,13 +157,17 @@ export function renderTransactionList(container, account, categories, payees, on
       <td class="dim">${escHtml(tx.tag || "")}</td>
       <td class="align-right"><span class="${amountClass}">${formatAmount(tx.amount)}</span></td>
       <td class="align-right dim">${formatCurrency(tx.runningBalance)}</td>
+      <td class="align-center">
+        <button class="icon-btn${tx.excluded ? " icon-btn-active" : ""}" title="${tx.excluded ? "Re-include in reports" : "Exclude from reports"}">&#8856;</button>
+      </td>
       <td class="actions-cell">
         <button class="icon-btn" title="Edit">&#9998;</button>
         <button class="icon-btn icon-btn-danger" title="Delete">&#128465;</button>
       </td>
     `;
 
-    const [editBtn, deleteBtn] = tr.querySelectorAll("button");
+    const [excludeBtn, editBtn, deleteBtn] = tr.querySelectorAll("button");
+    excludeBtn.addEventListener("click", () => toggleTransactionExcluded(account.id, tx.id));
     editBtn.addEventListener("click", () =>
       showTransactionForm(account.id, categories, payees, tx)
     );
@@ -180,7 +186,7 @@ export function renderTransactionList(container, account, categories, payees, on
   const categoryNames = categories.map((c) => c.name);
   const allSubcatNames = categories.flatMap((c) => c.subcategories.map((s) => s.name));
 
-  // Columns: Date, Payee, Category, Subcategory, Tag, Amount, Balance, Actions
+  // Columns: Date, Payee, Category, Subcategory, Tag, Amount, Balance, Excl., Actions
   attachTableFilter(
     tableWrapper.querySelector("table"),
     [
@@ -190,6 +196,7 @@ export function renderTransactionList(container, account, categories, payees, on
       { type: "select", options: allSubcatNames },
       "text",
       "text",
+      null,
       null,
       null,
     ],

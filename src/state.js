@@ -281,6 +281,23 @@ export function addTransactionsBatch(accountId, txDataArray) {
   return newTxs;
 }
 
+export function toggleTransactionExcluded(accountId, txId) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) => {
+      if (a.id !== accountId) return a;
+      return {
+        ...a,
+        transactions: (a.transactions || []).map((t) =>
+          t.id === txId ? { ...t, excluded: !t.excluded } : t
+        ),
+      };
+    }),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
 export function deleteTransaction(accountId, txId) {
   _data = {
     ..._data,

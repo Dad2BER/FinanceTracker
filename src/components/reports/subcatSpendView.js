@@ -192,6 +192,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   const txs = [];
   ledgers.forEach(acct => {
     (acct.transactions || []).forEach(tx => {
+      if (tx.excluded) return;
       if (tx.subcategoryId !== _selectedSubId) return;
       if (tx.amount >= 0) return; // expenses only
       const month = (tx.date || "").slice(0, 7);
