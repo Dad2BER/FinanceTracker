@@ -392,7 +392,7 @@ export function addPayee(name, subcategoryId) {
 }
 
 export function updatePayee(id, name, subcategoryId) {
-  // Resolve categoryId
+  // Resolve categoryId from the new subcategoryId
   let categoryId;
   if (subcategoryId) {
     const cat = _data.categories.find((c) =>
@@ -400,22 +400,51 @@ export function updatePayee(id, name, subcategoryId) {
     );
     if (cat) categoryId = cat.id;
   }
-  _data = {
-    ..._data,
-    payees: _data.payees.map((p) => {
-      if (p.id !== id) return p;
-      const updated = { ...p, name: name.trim() };
-      if (subcategoryId) {
-        updated.subcategoryId = subcategoryId;
-        if (categoryId) updated.categoryId = categoryId;
-        else delete updated.categoryId;
-      } else {
-        delete updated.subcategoryId;
-        delete updated.categoryId;
-      }
-      return updated;
-    }),
-  };
+
+  // Capture the old payee so we can detect subcategory changes and match transactions
+  const oldPayee = _data.payees.find((p) => p.id === id);
+  const subcategoryChanged = oldPayee && subcategoryId !== (oldPayee.subcategoryId ?? null);
+  const matchName = (oldPayee?.name ?? "").toLowerCase();
+
+  // Update the payee record
+  const updatedPayees = _data.payees.map((p) => {
+    if (p.id !== id) return p;
+    const updated = { ...p, name: name.trim() };
+    if (subcategoryId) {
+      updated.subcategoryId = subcategoryId;
+      if (categoryId) updated.categoryId = categoryId;
+      else delete updated.categoryId;
+    } else {
+      delete updated.subcategoryId;
+      delete updated.categoryId;
+    }
+    return updated;
+  });
+
+  // If the subcategory changed, re-categorize every transaction that references
+  // this payee (matched case-insensitively by name) across all accounts
+  let updatedAccounts = _data.accounts;
+  if (subcategoryChanged && matchName) {
+    updatedAccounts = _data.accounts.map((a) => {
+      if (!a.transactions?.length) return a;
+      const newTxs = a.transactions.map((tx) => {
+        if ((tx.payeeName ?? "").toLowerCase() !== matchName) return tx;
+        const updated = { ...tx };
+        if (subcategoryId) {
+          updated.subcategoryId = subcategoryId;
+          if (categoryId) updated.categoryId = categoryId;
+          else delete updated.categoryId;
+        } else {
+          delete updated.subcategoryId;
+          delete updated.categoryId;
+        }
+        return updated;
+      });
+      return { ...a, transactions: newTxs };
+    });
+  }
+
+  _data = { ..._data, payees: updatedPayees, accounts: updatedAccounts };
   saveData(_data, _profileId);
   notify();
 }
