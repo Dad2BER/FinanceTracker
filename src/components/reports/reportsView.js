@@ -151,6 +151,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
     (acct.transactions || []).forEach(tx => {
       const month = (tx.date || "").slice(0, 7);
       if (month.length !== 7 || month < startMonthStr || month > currentMonthStr) return;
+      if (tx.excluded) return;
       const catName = tx.categoryId ? catById.get(tx.categoryId) : null;
       if (catName === "Transfer") return;
       const subcatName = tx.subcategoryId ? subcatById.get(tx.subcategoryId) : null;
