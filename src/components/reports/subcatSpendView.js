@@ -95,7 +95,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     _selectedSubId = null;
   }
   if (!_selectedSubId) {
-    _selectedSubId = selCat?.subcategories[0]?.id ?? null;
+    _selectedSubId = "__all__";
   }
 
   const filterRow = document.createElement("div");
@@ -116,7 +116,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   });
   catSel.addEventListener("change", () => {
     _selectedCatId = catSel.value;
-    _selectedSubId = null;
+    _selectedSubId = "__all__";
     rerender();
   });
   catLbl.appendChild(catSel);
@@ -127,6 +127,11 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   subLbl.textContent = "Subcategory";
   const subSel = document.createElement("select");
   subSel.className = "form-select";
+  const allOpt = document.createElement("option");
+  allOpt.value = "__all__";
+  allOpt.textContent = "-- All --";
+  if (_selectedSubId === "__all__") allOpt.selected = true;
+  subSel.appendChild(allOpt);
   (selCat?.subcategories ?? []).forEach(s => {
     const opt = document.createElement("option");
     opt.value = s.id;
@@ -135,7 +140,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     subSel.appendChild(opt);
   });
   subSel.addEventListener("change", () => {
-    _selectedSubId = subSel.value || null;
+    _selectedSubId = subSel.value || "__all__";
     rerender();
   });
   subLbl.appendChild(subSel);
@@ -145,10 +150,10 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   container.appendChild(filterRow);
 
   // ── Guard: nothing selected ───────────────────────────────────────────────────
-  if (!_selectedCatId || !_selectedSubId) {
+  if (!_selectedCatId) {
     const el = document.createElement("div");
     el.className = "empty-state";
-    el.innerHTML = "<p>Select a category and subcategory to view spending.</p>";
+    el.innerHTML = "<p>Select a category to view spending.</p>";
     container.appendChild(el);
     return;
   }
@@ -159,6 +164,8 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   const currentMonth = now.getMonth() + 1;
   const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
 
+  const isAllMode = _selectedSubId === "__all__";
+
   let months, startMonthStr, emptyMsg;
   if (_subcatMode === "ytd") {
     months = [];
@@ -166,7 +173,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
       months.push(`${currentYear}-${String(m).padStart(2, "0")}`);
     }
     startMonthStr = months[0];
-    emptyMsg = `No expenses in this subcategory for ${currentYear}.`;
+    emptyMsg = `No expenses in this ${isAllMode ? "category" : "subcategory"} for ${currentYear}.`;
   } else {
     startMonthStr = subtractMonths(currentYear, currentMonth, 12);
     months = [];
@@ -175,17 +182,18 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
       months.push(`${iterY}-${String(iterM).padStart(2, "0")}`);
       if (++iterM > 12) { iterM = 1; iterY++; }
     }
-    emptyMsg = "No expenses in this subcategory for the last 12 months.";
+    emptyMsg = `No expenses in this ${isAllMode ? "category" : "subcategory"} for the last 12 months.`;
   }
 
   // ── Normalise payee names against the registered payees list ─────────────────
-  // Transactions may have legacy/differently-cased payee names from before a
-  // rename. Build a case-insensitive lookup so "KROGER" and "Kroger" both
-  // resolve to whatever canonical name is stored in the payees list.
   const payeeNormMap = new Map(); // lowercase → canonical name
   payees.forEach(p => payeeNormMap.set(p.name.toLowerCase(), p.name));
   const normaliseName = raw =>
     payeeNormMap.get((raw || "").toLowerCase()) || raw || "Unassigned";
+
+  // Subcategory name lookup for "all" mode
+  const subcatNameMap = new Map(); // subcategoryId → name
+  (selCat?.subcategories ?? []).forEach(s => subcatNameMap.set(s.id, s.name));
 
   // ── Collect transactions ─────────────────────────────────────────────────────
   const ledgers = accounts.filter(a => a.accountType === "ledger");
@@ -193,11 +201,18 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   ledgers.forEach(acct => {
     (acct.transactions || []).forEach(tx => {
       if (tx.excluded) return;
-      if (tx.subcategoryId !== _selectedSubId) return;
+      if (isAllMode) {
+        if (tx.categoryId !== _selectedCatId) return;
+      } else {
+        if (tx.subcategoryId !== _selectedSubId) return;
+      }
       if (tx.amount >= 0) return; // expenses only
       const month = (tx.date || "").slice(0, 7);
       if (month.length !== 7 || month < startMonthStr || month > currentMonthStr) return;
-      txs.push({ month, amount: Math.abs(tx.amount), payee: normaliseName(tx.payeeName) });
+      const label = isAllMode
+        ? (subcatNameMap.get(tx.subcategoryId) || "Uncategorized")
+        : normaliseName(tx.payeeName);
+      txs.push({ month, amount: Math.abs(tx.amount), label });
     });
   });
 
@@ -209,25 +224,26 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     return;
   }
 
-  // ── Payee aggregation ────────────────────────────────────────────────────────
-  const payeeTotals = new Map();
-  txs.forEach(({ payee, amount }) => {
-    payeeTotals.set(payee, (payeeTotals.get(payee) || 0) + amount);
+  // ── Label (payee or subcategory) aggregation ─────────────────────────────────
+  const labelTotals = new Map();
+  txs.forEach(({ label, amount }) => {
+    labelTotals.set(label, (labelTotals.get(label) || 0) + amount);
   });
-  // Sort payees largest→smallest total; stack is rendered bottom-up so largest is at the bottom
-  const allPayees = [...payeeTotals.entries()]
+  // Sort largest→smallest total; stack rendered bottom-up so largest is at bottom
+  const allLabels = [...labelTotals.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([name]) => name);
 
-  const useStack = allPayees.length <= MAX_PAYEES_FOR_STACK;
-  const payeeColor = new Map(allPayees.map((p, i) => [p, PALETTE[i % PALETTE.length]]));
+  // In "all" mode always stack (subcategories are few); otherwise respect the cap
+  const useStack = isAllMode || allLabels.length <= MAX_PAYEES_FOR_STACK;
+  const labelColor = new Map(allLabels.map((l, i) => [l, PALETTE[i % PALETTE.length]]));
 
-  // ── Month → payee → total ────────────────────────────────────────────────────
+  // ── Month → label → total ────────────────────────────────────────────────────
   const monthMap = new Map();
-  txs.forEach(({ month, amount, payee }) => {
+  txs.forEach(({ month, amount, label }) => {
     if (!monthMap.has(month)) monthMap.set(month, new Map());
     const pm = monthMap.get(month);
-    pm.set(payee, (pm.get(payee) || 0) + amount);
+    pm.set(label, (pm.get(label) || 0) + amount);
   });
 
   const chartData = months.map(month => {
@@ -235,9 +251,9 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     let total = 0;
     const segments = [];
     if (useStack) {
-      allPayees.forEach(payee => {
-        const v = pm.get(payee) || 0;
-        if (v > 0) { segments.push({ payee, v }); total += v; }
+      allLabels.forEach(label => {
+        const v = pm.get(label) || 0;
+        if (v > 0) { segments.push({ label, v }); total += v; }
       });
     } else {
       pm.forEach(v => { total += v; });
@@ -271,8 +287,8 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
       d.segments.forEach(seg => {
         html += `
           <div class="rtt-cat">
-            <span class="legend-dot" style="background:${payeeColor.get(seg.payee)}"></span>
-            <span class="rtt-cat-name">${seg.payee}</span>
+            <span class="legend-dot" style="background:${labelColor.get(seg.label)}"></span>
+            <span class="rtt-cat-name">${seg.label}</span>
             <span class="rtt-val">${formatCurrency(seg.v)}</span>
           </div>`;
       });
@@ -387,7 +403,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
           const rect = document.createElementNS(NS, "rect");
           rect.setAttribute("x", x);     rect.setAttribute("y", yBase);
           rect.setAttribute("width", barW); rect.setAttribute("height", segH);
-          rect.setAttribute("fill", payeeColor.get(seg.payee));
+          rect.setAttribute("fill", labelColor.get(seg.label));
           rect.setAttribute("rx", 2);
           if (isCurrent) rect.setAttribute("opacity", "0.7");
           rect.style.cursor = "default";
@@ -448,7 +464,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   ro.observe(svgWrap);
 
   // ── Legend ───────────────────────────────────────────────────────────────────
-  if (useStack && allPayees.length > 0) {
+  if (useStack && allLabels.length > 0) {
     const legendWrap = document.createElement("div");
     legendWrap.className = "report-legend-wrap";
 
@@ -456,18 +472,18 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     legendHeader.className = "report-legend-header";
     const legendTitle = document.createElement("span");
     legendTitle.className = "report-legend-title";
-    legendTitle.textContent = "Payees";
+    legendTitle.textContent = isAllMode ? "Subcategories" : "Payees";
     legendHeader.appendChild(legendTitle);
     legendWrap.appendChild(legendHeader);
 
     const legend = document.createElement("div");
     legend.className = "report-legend";
-    allPayees.forEach(payee => {
+    allLabels.forEach(label => {
       const item = document.createElement("div");
       item.className = "legend-item";
       item.innerHTML = `
-        <span class="legend-dot" style="background:${payeeColor.get(payee)}"></span>
-        <span>${payee}</span>
+        <span class="legend-dot" style="background:${labelColor.get(label)}"></span>
+        <span>${label}</span>
       `;
       legend.appendChild(item);
     });
@@ -477,7 +493,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     const note = document.createElement("p");
     note.className = "dim";
     note.style.cssText = "font-size:0.82rem;margin-top:0.5rem";
-    note.textContent = `${allPayees.length} payees — bars show monthly totals only (breakdown shown when 10 or fewer payees).`;
+    note.textContent = `${allLabels.length} payees — bars show monthly totals only (breakdown shown when 10 or fewer payees).`;
     section.appendChild(note);
   }
 }
