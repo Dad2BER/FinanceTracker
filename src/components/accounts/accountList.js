@@ -140,6 +140,127 @@ function buildAccountTable(entries, countLabel, onSelectAccount) {
   return wrapper;
 }
 
+// ── Ledger-specific table builder ─────────────────────────────────────────────
+
+function fmtDate(isoDate) {
+  if (!isoDate) return "—";
+  const [y, m, d] = isoDate.split("-");
+  return new Date(+y, +m - 1, +d)
+    .toLocaleString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+}
+
+/**
+ * Builds the ledger-specific table with Last Payment and Recent Activity columns.
+ * No transaction-count column.
+ */
+function buildLedgerTable(entries, onSelectAccount) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-wrapper";
+
+  if (entries.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "table-empty-state";
+    empty.textContent = "None";
+    wrapper.appendChild(empty);
+    return wrapper;
+  }
+
+  wrapper.innerHTML = `
+    <table class="holdings-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th class="align-right">Last Payment</th>
+          <th class="align-right">Recent Activity</th>
+          <th class="align-right">Balance</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  `;
+
+  const tbody = wrapper.querySelector("tbody");
+
+  entries.forEach(({ account, total, dayChange }) => {
+    const txs = account.transactions || [];
+
+    // Most recent transaction by date
+    const recentDate = txs.reduce(
+      (latest, tx) => (tx.date && tx.date > (latest || "")) ? tx.date : latest,
+      null
+    );
+
+    // Last payment — only meaningful for negative-balance accounts
+    // Looks for "payment" anywhere in the payee name (case-insensitive)
+    let lastPaymentDate = null;
+    if (total !== null && total < 0) {
+      const paymentTxs = txs.filter(
+        tx => (tx.payeeName || "").toLowerCase().includes("payment")
+      );
+      if (paymentTxs.length > 0) {
+        lastPaymentDate = paymentTxs.reduce(
+          (latest, tx) => (tx.date > (latest || "")) ? tx.date : latest,
+          null
+        );
+      }
+    }
+
+    const tr = document.createElement("tr");
+    tr.style.cursor = "pointer";
+
+    // Name cell (with optional day-change badge)
+    const nameCell = document.createElement("td");
+    nameCell.className = "symbol-cell";
+    nameCell.textContent = account.name;
+    if (dayChange !== null && Math.abs(dayChange) >= 0.01) {
+      const badge = document.createElement("span");
+      badge.className = "day-change-badge";
+      const sign = dayChange > 0 ? "+" : "-";
+      badge.textContent = ` (${sign}${formatCurrency(Math.abs(dayChange))})`;
+      badge.style.color = dayChange > 0 ? "var(--color-success)" : "var(--color-danger)";
+      nameCell.appendChild(badge);
+    }
+
+    // Last Payment cell
+    const paymentCell = document.createElement("td");
+    paymentCell.className = "align-right dim";
+    paymentCell.style.fontSize = "0.85rem";
+    paymentCell.textContent = fmtDate(lastPaymentDate);
+
+    // Recent Activity cell
+    const activityCell = document.createElement("td");
+    activityCell.className = "align-right dim";
+    activityCell.style.fontSize = "0.85rem";
+    activityCell.textContent = fmtDate(recentDate);
+
+    // Balance cell
+    const valueCell = document.createElement("td");
+    valueCell.className = "align-right";
+    if (total === null) {
+      valueCell.appendChild(createLoadingSpinner());
+    } else {
+      const span = document.createElement("span");
+      span.style.fontWeight = "600";
+      if (total > 0) {
+        span.style.color = "var(--color-success)";
+        span.textContent = formatCurrency(total);
+      } else if (total < 0) {
+        span.style.color = "var(--color-danger)";
+        span.textContent = `-${formatCurrency(Math.abs(total))}`;
+      } else {
+        span.textContent = formatCurrency(0);
+      }
+      valueCell.appendChild(span);
+    }
+
+    tr.append(nameCell, paymentCell, activityCell, valueCell);
+    tr.addEventListener("click", () => onSelectAccount(account.id));
+    tbody.appendChild(tr);
+  });
+
+  return wrapper;
+}
+
 // ── Section title helper ──────────────────────────────────────────────────────
 
 /**
@@ -263,7 +384,7 @@ export function renderAccountList(
     const liabCol = document.createElement("div");
     liabCol.className = "accounts-col";
     liabCol.appendChild(buildSectionTitle("Ledgers", ledgerSum, null));
-    liabCol.appendChild(buildAccountTable(ledgerEntries, "Transactions", onSelectAccount));
+    liabCol.appendChild(buildLedgerTable(ledgerEntries, onSelectAccount));
 
     grid.appendChild(assetsCol);
     grid.appendChild(liabCol);
