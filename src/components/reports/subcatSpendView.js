@@ -37,11 +37,11 @@ function subtractMonths(year, month, n) {
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export function renderSubcatSpendView(container, accounts, categories, onBack) {
+export function renderSubcatSpendView(container, accounts, categories, onBack, payees = []) {
   container.innerHTML = "";
 
   function rerender() {
-    renderSubcatSpendView(container, accounts, categories, onBack);
+    renderSubcatSpendView(container, accounts, categories, onBack, payees);
   }
 
   // ── Header ──────────────────────────────────────────────────────────────────
@@ -178,6 +178,15 @@ export function renderSubcatSpendView(container, accounts, categories, onBack) {
     emptyMsg = "No expenses in this subcategory for the last 12 months.";
   }
 
+  // ── Normalise payee names against the registered payees list ─────────────────
+  // Transactions may have legacy/differently-cased payee names from before a
+  // rename. Build a case-insensitive lookup so "KROGER" and "Kroger" both
+  // resolve to whatever canonical name is stored in the payees list.
+  const payeeNormMap = new Map(); // lowercase → canonical name
+  payees.forEach(p => payeeNormMap.set(p.name.toLowerCase(), p.name));
+  const normaliseName = raw =>
+    payeeNormMap.get((raw || "").toLowerCase()) || raw || "Unassigned";
+
   // ── Collect transactions ─────────────────────────────────────────────────────
   const ledgers = accounts.filter(a => a.accountType === "ledger");
   const txs = [];
@@ -187,7 +196,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack) {
       if (tx.amount >= 0) return; // expenses only
       const month = (tx.date || "").slice(0, 7);
       if (month.length !== 7 || month < startMonthStr || month > currentMonthStr) return;
-      txs.push({ month, amount: Math.abs(tx.amount), payee: tx.payeeName || "Unassigned" });
+      txs.push({ month, amount: Math.abs(tx.amount), payee: normaliseName(tx.payeeName) });
     });
   });
 

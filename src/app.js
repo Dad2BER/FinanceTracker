@@ -434,7 +434,7 @@ function render() {
     const _reportCategories = getCategories();
     const _reportOnBack     = () => navigateTo({ tab: "finances", page: "summary" });
     if (view.page === "subcat-spend") {
-      renderSubcatSpendView(shellContent, _reportAccounts, _reportCategories, _reportOnBack);
+      renderSubcatSpendView(shellContent, _reportAccounts, _reportCategories, _reportOnBack, getPayees());
     } else {
       renderReportsView(shellContent, _reportAccounts, _reportCategories, _reportOnBack);
     }
