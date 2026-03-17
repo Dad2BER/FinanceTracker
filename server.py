@@ -79,7 +79,8 @@ def init_db():
             payee_name     TEXT NOT NULL,
             subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL,
             tag            TEXT,
-            amount         REAL NOT NULL
+            amount         REAL NOT NULL,
+            excluded       INTEGER NOT NULL DEFAULT 0
         );
     """)
     con.commit()
@@ -112,6 +113,13 @@ def init_db():
         con.commit()
     except sqlite3.OperationalError:
         pass
+
+    # Add excluded column to transactions (persists the exclude-from-budget flag)
+    try:
+        con.execute("ALTER TABLE transactions ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
 
     # ── Data migrations ────────────────────────────────────────────────────────
     # Rename account_type 'liability' → 'ledger'
@@ -188,6 +196,8 @@ def load_state(profile_id):
                 tx["categoryId"] = t["category_id"]
             if t["tag"]:
                 tx["tag"] = t["tag"]
+            if t["excluded"]:
+                tx["excluded"] = True
             transactions.append(tx)
 
         accounts.append({
@@ -325,8 +335,8 @@ def save_state(data, profile_id):
                 for t in acc.get("transactions", []):
                     con.execute(
                         "INSERT INTO transactions "
-                        "(id, account_id, date, payee_name, subcategory_id, tag, amount) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "(id, account_id, date, payee_name, subcategory_id, tag, amount, excluded) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             t["id"],
                             acc["id"],
@@ -335,6 +345,7 @@ def save_state(data, profile_id):
                             t.get("subcategoryId"),
                             t.get("tag") or None,
                             t["amount"],
+                            1 if t.get("excluded") else 0,
                         )
                     )
     finally:
