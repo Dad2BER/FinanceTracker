@@ -82,6 +82,10 @@ def init_db():
             amount         REAL NOT NULL,
             excluded       INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS profile_settings (
+            profile_id    TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+            settings_json TEXT NOT NULL DEFAULT '{}'
+        );
     """)
     con.commit()
 
@@ -246,8 +250,25 @@ def load_state(profile_id):
             payee["categoryId"] = p["category_id"]
         payees.append(payee)
 
+    # ── Profile Settings (retirement inputs, etc.) ────────────────────────────
+    settings_row = con.execute(
+        "SELECT settings_json FROM profile_settings WHERE profile_id = ?",
+        (profile_id,)
+    ).fetchone()
+    ret_inputs = None
+    if settings_row:
+        try:
+            ret_inputs = json.loads(settings_row["settings_json"]).get("retirementInputs")
+        except Exception:
+            pass
+
     con.close()
-    return {"accounts": accounts, "categories": categories, "payees": payees}
+    return {
+        "accounts":         accounts,
+        "categories":       categories,
+        "payees":           payees,
+        "retirementInputs": ret_inputs,
+    }
 
 
 def save_state(data, profile_id):
@@ -348,6 +369,15 @@ def save_state(data, profile_id):
                             1 if t.get("excluded") else 0,
                         )
                     )
+
+            # ── Profile Settings ────────────────────────────────────────────────
+            retirement_inputs = data.get("retirementInputs")
+            if retirement_inputs is not None:
+                con.execute(
+                    "INSERT OR REPLACE INTO profile_settings (profile_id, settings_json) "
+                    "VALUES (?, ?)",
+                    (profile_id, json.dumps({"retirementInputs": retirement_inputs}))
+                )
     finally:
         con.close()
 

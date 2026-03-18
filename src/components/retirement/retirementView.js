@@ -1,6 +1,9 @@
 import { formatCurrency } from "../../utils/currency.js";
+import { getRetirementInputs, saveRetirementInputs } from "../../state.js";
 
 // ── Shared persisted state ─────────────────────────────────────────────────────
+// _s holds the working copy for the current session.
+// It is lazily populated from the server on first render via ensureLoaded().
 let _s = {
   currentAge:     60,
   annualExpenses: 80000,
@@ -27,6 +30,53 @@ let _s = {
     ],
   },
 };
+
+// ── Persistence helpers ────────────────────────────────────────────────────────
+// _sLoaded ensures we only merge from the server once per session (page load).
+let _sLoaded   = false;
+let _inputAbort = null;   // AbortController for container input listener
+let _persistTimer = null; // debounce handle for saveRetirementInputs
+
+// Merge server-persisted values into _s on first render.
+function ensureLoaded() {
+  if (_sLoaded) return;
+  _sLoaded = true;
+  const saved = getRetirementInputs();
+  if (!saved) return;
+
+  // Scalar fields
+  for (const k of [
+    "currentAge", "annualExpenses", "taxable", "taxFree", "taxDeferred",
+    "cashYears", "nominalGrowth", "inflation", "taxRate",
+  ]) {
+    if (typeof saved[k] === "number") _s[k] = saved[k];
+  }
+
+  // Lists
+  if (Array.isArray(saved.lumpSums))  _s.lumpSums  = saved.lumpSums;
+  if (Array.isArray(saved.annuities)) _s.annuities = saved.annuities;
+
+  // Glide path
+  if (saved.glidePath) {
+    if (typeof saved.glidePath.transitionYears === "number") {
+      _s.glidePath.transitionYears = saved.glidePath.transitionYears;
+    }
+    const savedAllocs = saved.glidePath.allocations;
+    if (Array.isArray(savedAllocs) && savedAllocs.length === _s.glidePath.allocations.length) {
+      savedAllocs.forEach((a, i) => {
+        if (typeof a.startPct === "number") _s.glidePath.allocations[i].startPct = a.startPct;
+        if (typeof a.endPct   === "number") _s.glidePath.allocations[i].endPct   = a.endPct;
+      });
+    }
+  }
+}
+
+// Debounced save — fires 400ms after the last change so we don't flood the server
+// on rapid keystrokes.
+function persist() {
+  clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(() => saveRetirementInputs(_s), 400);
+}
 
 // ── Per-account simulation ─────────────────────────────────────────────────────
 // Withdrawal order: Taxable → Tax-Deferred (grossed up for taxes) → Tax-Free
@@ -159,6 +209,7 @@ function retSection(title) {
 
 // ── INPUTS PAGE ───────────────────────────────────────────────────────────────
 export function renderRetirementInputs(container, onViewSimulation) {
+  ensureLoaded();
   container.innerHTML = "";
 
   const header = document.createElement("div");
@@ -276,7 +327,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
             { min: _s.currentAge, max: 100, step: 1 }],
          ["Amount ($)", ls.amount, v => { _s.lumpSums[i].amount = v; },
             { min: 0, step: 1000 }]],
-        () => { _s.lumpSums.splice(i, 1); renderLumpRows(); }
+        () => { _s.lumpSums.splice(i, 1); renderLumpRows(); persist(); }
       ));
     });
     addLumpBtn.style.display = _s.lumpSums.length >= 2 ? "none" : "";
@@ -284,6 +335,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
   addLumpBtn.addEventListener("click", () => {
     _s.lumpSums.push({ age: _s.currentAge + 5, amount: 50000 });
     renderLumpRows();
+    persist();
   });
   renderLumpRows();
 
@@ -310,7 +362,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
             { min: _s.currentAge, max: 100, step: 1 }],
          ["Annual ($)", a.amount, v => { _s.annuities[i].amount = v; },
             { min: 0, step: 500 }]],
-        () => { _s.annuities.splice(i, 1); renderAnnRows(); }
+        () => { _s.annuities.splice(i, 1); renderAnnRows(); persist(); }
       ));
     });
     addAnnBtn.style.display = _s.annuities.length >= 2 ? "none" : "";
@@ -318,6 +370,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
   addAnnBtn.addEventListener("click", () => {
     _s.annuities.push({ startAge: _s.currentAge + 2, amount: 24000 });
     renderAnnRows();
+    persist();
   });
   renderAnnRows();
 
@@ -335,10 +388,19 @@ export function renderRetirementInputs(container, onViewSimulation) {
     cta.appendChild(btn);
     leftCol.appendChild(cta);
   }
+
+  // ── Auto-save on any input change ────────────────────────────────────────────
+  // All number inputs bubble their "input" event up to the container.
+  // We debounce to avoid flooding the server on rapid keystrokes.
+  // AbortController ensures only one listener is active at a time.
+  if (_inputAbort) _inputAbort.abort();
+  _inputAbort = new AbortController();
+  container.addEventListener("input", persist, { signal: _inputAbort.signal });
 }
 
 // ── SIMULATION PAGE ───────────────────────────────────────────────────────────
 export function renderRetirementSimulation(container) {
+  ensureLoaded();
   container.innerHTML = "";
 
   const header = document.createElement("div");

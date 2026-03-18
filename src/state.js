@@ -8,9 +8,10 @@ let _profileId = null;  // set by initState; passed to saveData on every mutatio
 export function initState(data, profileId) {
   _profileId = profileId;
   _data = {
-    accounts:   Array.isArray(data?.accounts)   ? data.accounts   : [],
-    categories: Array.isArray(data?.categories) ? data.categories : [],
-    payees:     Array.isArray(data?.payees)     ? data.payees     : [],
+    accounts:          Array.isArray(data?.accounts)   ? data.accounts   : [],
+    categories:        Array.isArray(data?.categories) ? data.categories : [],
+    payees:            Array.isArray(data?.payees)     ? data.payees     : [],
+    retirementInputs:  data?.retirementInputs ?? null,
   };
 }
 let _listeners = [];
@@ -24,6 +25,17 @@ export function subscribe(fn) {
   return () => {
     _listeners = _listeners.filter((l) => l !== fn);
   };
+}
+
+// ── Retirement Inputs ─────────────────────────────────────────────────────────
+
+export function getRetirementInputs() {
+  return _data.retirementInputs ?? null;
+}
+
+export function saveRetirementInputs(inputs) {
+  _data = { ..._data, retirementInputs: inputs };
+  saveData(_data, _profileId);
 }
 
 // ── Account Getters ───────────────────────────────────────────────────────────
