@@ -1745,12 +1745,53 @@
     .hist-neutral { color: var(--color-text-dim); }
 
     /* ── Historic Simulation page ────────────────────────────────────────────── */
-    .hsim-controls {
-      display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
-      margin-bottom: 0.5rem;
+    .hsim-controls    { margin-bottom: 1.25rem; }
+    .hsim-slider-header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 0.4rem;
     }
-    .hsim-year-label { font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
-    .hsim-year-select { width: 7rem; }
+    .hsim-year-label { font-weight: 600; font-size: 0.9rem; }
+    .hsim-year-val   {
+      font-size: 1.75rem; font-weight: 700; line-height: 1;
+      color: var(--color-primary);
+    }
+    .hsim-year-slider {
+      -webkit-appearance: none; appearance: none;
+      display: block; width: 100%; height: 6px;
+      border-radius: 3px; outline: none; cursor: pointer;
+      background: var(--color-surface-2);
+      accent-color: var(--color-primary);
+    }
+    .hsim-year-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: var(--color-primary);
+      border: 2px solid var(--color-bg);
+      box-shadow: 0 0 0 2px var(--color-primary);
+      cursor: pointer; transition: box-shadow 0.15s;
+    }
+    .hsim-year-slider:hover::-webkit-slider-thumb,
+    .hsim-year-slider:focus::-webkit-slider-thumb {
+      box-shadow: 0 0 0 5px rgba(99,102,241,0.28);
+    }
+    .hsim-year-slider::-moz-range-thumb {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: var(--color-primary);
+      border: 2px solid var(--color-bg);
+      cursor: pointer;
+    }
+    .hsim-year-slider::-moz-range-progress {
+      background: var(--color-primary); border-radius: 3px; height: 6px;
+    }
+    .hsim-slider-ticks {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 0.35rem;
+    }
+    .hsim-slider-ticks > span:first-child,
+    .hsim-slider-ticks > span:last-child {
+      font-size: 0.78rem; color: var(--color-text-dim);
+      font-variant-numeric: tabular-nums;
+    }
     .hsim-year-hint { font-size: 0.78rem; color: var(--color-text-dim); }
 
     /* Table — inherits hist-table styles; add col alignment tweaks */

@@ -264,35 +264,54 @@ export function renderHistoricSimulationView(container) {
     header.appendChild(h1);
     container.appendChild(header);
 
-    // ── Year selector ────────────────────────────────────────────────────────
+    // ── Year selector (slider) ────────────────────────────────────────────────
+    // Only allow start years with enough data to reach age 95.
+    const lastQualYear = LAST_YEAR - (95 - s.currentAge);
+    _startYear = Math.max(FIRST_YEAR, Math.min(_startYear, lastQualYear));
+
     const controls = document.createElement("div");
     controls.className = "hsim-controls";
 
-    const lbl = document.createElement("label");
+    // Header row: label on left, current year value on right
+    const sliderHeader = document.createElement("div");
+    sliderHeader.className = "hsim-slider-header";
+    const lbl = document.createElement("span");
     lbl.className = "hsim-year-label";
     lbl.textContent = "Retirement Start Year:";
+    const valDisplay = document.createElement("span");
+    valDisplay.className = "hsim-year-val";
+    valDisplay.textContent = _startYear;
+    sliderHeader.appendChild(lbl);
+    sliderHeader.appendChild(valDisplay);
+    controls.appendChild(sliderHeader);
 
-    const sel = document.createElement("select");
-    sel.className = "form-input hsim-year-select";
-    for (let y = FIRST_YEAR; y <= LAST_YEAR; y++) {
-      const opt = document.createElement("option");
-      opt.value = y;
-      opt.textContent = y;
-      if (y === _startYear) opt.selected = true;
-      sel.appendChild(opt);
-    }
-    sel.addEventListener("change", () => {
-      _startYear = parseInt(sel.value, 10);
+    // Slider — dragging updates label live; releasing re-renders
+    const slider = document.createElement("input");
+    slider.type  = "range";
+    slider.className = "hsim-year-slider";
+    slider.min   = FIRST_YEAR;
+    slider.max   = lastQualYear;
+    slider.value = _startYear;
+    slider.addEventListener("input", () => {
+      _startYear = parseInt(slider.value, 10);
+      valDisplay.textContent = _startYear;
+    });
+    slider.addEventListener("change", () => {
+      _startYear = parseInt(slider.value, 10);
       render();
     });
+    controls.appendChild(slider);
 
-    const hint = document.createElement("span");
-    hint.className = "hsim-year-hint";
-    hint.textContent = `Data available ${FIRST_YEAR}–${LAST_YEAR}. Simulation ends when data runs out.`;
+    // Tick labels: min year — count — max year
+    const ticks = document.createElement("div");
+    ticks.className = "hsim-slider-ticks";
+    ticks.innerHTML =
+      `<span>${FIRST_YEAR}</span>` +
+      `<span class="hsim-year-hint">${lastQualYear - FIRST_YEAR + 1} qualifying start years · ` +
+        `use ← → keys for fine control</span>` +
+      `<span>${lastQualYear}</span>`;
+    controls.appendChild(ticks);
 
-    controls.appendChild(lbl);
-    controls.appendChild(sel);
-    controls.appendChild(hint);
     container.appendChild(controls);
 
     // ── Run selected simulation ───────────────────────────────────────────────
