@@ -453,6 +453,13 @@ export function renderRetirementInputs(container, onViewSimulation) {
   container.addEventListener("change", persistNow, sig);
 }
 
+// Returns the live working copy of all retirement inputs after ensuring it has
+// been loaded from storage.  Used by sibling views (e.g. historicSimulationView).
+export function getSimInputs() {
+  ensureLoaded();
+  return _s;
+}
+
 // ── SIMULATION PAGE ───────────────────────────────────────────────────────────
 export function renderRetirementSimulation(container) {
   ensureLoaded();

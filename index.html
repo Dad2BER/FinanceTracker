@@ -1744,6 +1744,21 @@
     .hist-neg     { color: var(--color-danger); }
     .hist-neutral { color: var(--color-text-dim); }
 
+    /* ── Historic Simulation page ────────────────────────────────────────────── */
+    .hsim-controls {
+      display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+      margin-bottom: 0.5rem;
+    }
+    .hsim-year-label { font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+    .hsim-year-select { width: 7rem; }
+    .hsim-year-hint { font-size: 0.78rem; color: var(--color-text-dim); }
+
+    /* Table — inherits hist-table styles; add col alignment tweaks */
+    .hsim-table th, .hsim-table td { text-align: right; }
+    .hsim-table th:nth-child(1), .hsim-table td:nth-child(1),
+    .hsim-table th:nth-child(2), .hsim-table td:nth-child(2) { text-align: center; }
+    .hsim-table-wrap { max-height: 420px; }
+
   </style>
 </head>
 <body>
