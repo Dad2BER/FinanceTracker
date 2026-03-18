@@ -13,6 +13,7 @@ import { renderSettingsView } from "./components/settings/settingsView.js";
 import { renderReportsView }     from "./components/reports/reportsView.js";
 import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
 import { renderAssetsView } from "./components/assets/assetsView.js";
+import { renderRetirementView } from "./components/retirement/retirementView.js";
 
 // ── Tab / Page Definitions ─────────────────────────────────────────────────────
 const TABS = [
@@ -439,12 +440,7 @@ function render() {
       renderReportsView(shellContent, _reportAccounts, _reportCategories, _reportOnBack);
     }
   } else if (view.tab === "retirement") {
-    shellContent.innerHTML = `
-      <div style="padding:2rem 0">
-        <h2 style="margin-bottom:0.5rem">Retirement</h2>
-        <p style="color:var(--color-text-dim)">Retirement planning tools are coming soon.</p>
-      </div>
-    `;
+    renderRetirementView(shellContent);
   } else if (view.tab === "settings") {
     renderSettingsView(
       shellContent,
