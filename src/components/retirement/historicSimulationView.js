@@ -133,6 +133,122 @@ function niceStep(maxVal, steps = 5) {
   return nice * mag;
 }
 
+// ── Outcome categorization (all qualifying start years) ───────────────────────
+// A simulation "qualifies" when there are enough years of data to reach age 95.
+// Threshold: 150% of the original (start-year dollar) portfolio value.
+// Insufficient — depleted before age 95
+// Sufficient   — 0 < value_at_95 ≤ 1.5 × starting portfolio
+// Excess       — value_at_95 > 1.5 × starting portfolio
+function categorizeAllSimulations(s) {
+  const totalStart   = s.taxable + s.taxFree + s.taxDeferred;
+  const yearsNeeded  = 95 - s.currentAge;
+  const lastQualYear = LAST_YEAR - yearsNeeded;
+
+  let insufficient = 0, sufficient = 0, excess = 0;
+
+  for (let yr = FIRST_YEAR; yr <= lastQualYear; yr++) {
+    const sim  = runHistoricSimulation(s, yr);
+    const pt95 = sim.find(d => d.age === 95);
+
+    if (!pt95 || pt95.total <= 0) {
+      insufficient++;
+    } else if (pt95.total > 1.5 * totalStart) {
+      excess++;
+    } else {
+      sufficient++;
+    }
+  }
+
+  return {
+    insufficient, sufficient, excess,
+    total: insufficient + sufficient + excess,
+  };
+}
+
+// ── Outcome pie chart ──────────────────────────────────────────────────────────
+function drawOutcomePie(wrap, counts) {
+  const { insufficient, sufficient, excess, total } = counts;
+
+  const title = document.createElement("div");
+  title.className = "hsim-pie-title";
+  title.textContent = "Outcomes to Age 95";
+  wrap.appendChild(title);
+
+  if (total === 0) {
+    const msg = document.createElement("p");
+    msg.className = "ret-note";
+    msg.style.textAlign = "center";
+    msg.textContent = "No qualifying scenarios — choose an earlier start year.";
+    wrap.appendChild(msg);
+    return;
+  }
+
+  const SEGS = [
+    { label: "Insufficient", count: insufficient, color: "#ef4444" },
+    { label: "Sufficient",   count: sufficient,   color: "#f59e0b" },
+    { label: "Excess",       count: excess,        color: "#22c55e" },
+  ];
+
+  const SIZE = 160, CX = 80, CY = 80, RO = 64, RI = 40;
+  const NS  = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("width", SIZE); svg.setAttribute("height", SIZE);
+  svg.setAttribute("style", "display:block;margin:0 auto");
+
+  // Donut segment path: startDeg→endDeg, 0° = top, clockwise
+  function arcPath(startDeg, endDeg) {
+    const r = a => (a - 90) * Math.PI / 180;
+    const [sx, sy] = [CX + RO * Math.cos(r(startDeg)), CY + RO * Math.sin(r(startDeg))];
+    const [ex, ey] = [CX + RO * Math.cos(r(endDeg)),   CY + RO * Math.sin(r(endDeg))];
+    const [ix, iy] = [CX + RI * Math.cos(r(endDeg)),   CY + RI * Math.sin(r(endDeg))];
+    const [ox, oy] = [CX + RI * Math.cos(r(startDeg)), CY + RI * Math.sin(r(startDeg))];
+    const lg = (endDeg - startDeg) > 180 ? 1 : 0;
+    return `M${sx},${sy} A${RO},${RO} 0 ${lg} 1 ${ex},${ey} L${ix},${iy} A${RI},${RI} 0 ${lg} 0 ${ox},${oy} Z`;
+  }
+
+  let angle = 0;
+  SEGS.forEach(seg => {
+    if (!seg.count) return;
+    const endAngle = angle + (seg.count / total) * 360;
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", arcPath(angle, endAngle - 0.4)); // tiny gap between segments
+    path.setAttribute("fill", seg.color);
+    path.setAttribute("opacity", "0.88");
+    svg.appendChild(path);
+    angle = endAngle;
+  });
+
+  // Center text: total count
+  const ct = document.createElementNS(NS, "text");
+  ct.setAttribute("x", CX); ct.setAttribute("y", CY - 6);
+  ct.setAttribute("text-anchor", "middle"); ct.setAttribute("font-size", "22");
+  ct.setAttribute("font-weight", "700"); ct.setAttribute("fill", "#e2e8f0");
+  ct.textContent = total;
+  svg.appendChild(ct);
+  const cl = document.createElementNS(NS, "text");
+  cl.setAttribute("x", CX); cl.setAttribute("y", CY + 12);
+  cl.setAttribute("text-anchor", "middle"); cl.setAttribute("font-size", "10");
+  cl.setAttribute("fill", "#718096");
+  cl.textContent = "scenarios";
+  svg.appendChild(cl);
+  wrap.appendChild(svg);
+
+  // Legend rows
+  const legend = document.createElement("div");
+  legend.className = "hsim-pie-legend";
+  SEGS.forEach(seg => {
+    const pct  = ((seg.count / total) * 100).toFixed(0);
+    const item = document.createElement("div");
+    item.className = "hsim-pie-legend-item";
+    item.innerHTML =
+      `<span class="hsim-pie-dot" style="background:${seg.color}"></span>` +
+      `<span class="hsim-pie-lbl">${seg.label}</span>` +
+      `<span class="hsim-pie-cnt">${seg.count} <span class="hsim-pie-pct">(${pct}%)</span></span>`;
+    legend.appendChild(item);
+  });
+  wrap.appendChild(legend);
+}
+
 // ── Main render ────────────────────────────────────────────────────────────────
 export function renderHistoricSimulationView(container) {
   const s = getSimInputs();
@@ -179,7 +295,7 @@ export function renderHistoricSimulationView(container) {
     controls.appendChild(hint);
     container.appendChild(controls);
 
-    // ── Run simulation ───────────────────────────────────────────────────────
+    // ── Run selected simulation ───────────────────────────────────────────────
     const data = runHistoricSimulation(s, _startYear);
 
     if (data.length === 0) {
@@ -192,10 +308,24 @@ export function renderHistoricSimulationView(container) {
 
     const lastPt       = data[data.length - 1];
     const depleted     = lastPt.total <= 0;
-    const dataEnded    = lastPt.year < _startYear + (100 - s.currentAge); // ran out of data
+    const dataEnded    = lastPt.year < _startYear + (100 - s.currentAge);
     const depletionAge = depleted ? lastPt.age : null;
+    const totalStart   = s.taxable + s.taxFree + s.taxDeferred;
 
-    // ── Headline card ────────────────────────────────────────────────────────
+    // ── Top row: headline + summary (left) | pie chart (right) ───────────────
+    const topRow = document.createElement("div");
+    topRow.className = "hsim-top-row";
+    container.appendChild(topRow);
+
+    const topLeft = document.createElement("div");
+    topLeft.className = "hsim-top-left";
+    topRow.appendChild(topLeft);
+
+    const topRight = document.createElement("div");
+    topRight.className = "hsim-top-right";
+    topRow.appendChild(topRight);
+
+    // ── Headline card (inside left column) ───────────────────────────────────
     const headline = document.createElement("div");
     headline.className = "ret-headline-card";
     if (depleted) {
@@ -207,7 +337,7 @@ export function renderHistoricSimulationView(container) {
     } else if (dataEnded) {
       headline.innerHTML = `
         <div class="ret-headline-label">Historic Data Ends at Age ${lastPt.age}</div>
-        <div class="ret-headline-age" style="color:var(--color-warning, #f59e0b)">Age ${lastPt.age}</div>
+        <div class="ret-headline-age" style="color:var(--color-warning,#f59e0b)">Age ${lastPt.age}</div>
         <div class="ret-headline-sub">Portfolio: ${formatCurrency(lastPt.total)} remaining in ${_startYear}'s dollars
           — choose an earlier start year for a full run</div>`;
     } else {
@@ -217,10 +347,9 @@ export function renderHistoricSimulationView(container) {
         <div class="ret-headline-sub">Survives to age 100 with ${formatCurrency(lastPt.total)} remaining
           (${_startYear}'s dollars · historic ${_startYear}–${lastPt.year})</div>`;
     }
-    container.appendChild(headline);
+    topLeft.appendChild(headline);
 
-    // ── Summary cards ────────────────────────────────────────────────────────
-    const totalStart   = s.taxable + s.taxFree + s.taxDeferred;
+    // ── Summary cards (inside left column) ───────────────────────────────────
     const midPt        = data[Math.floor(data.length / 2)];
     const avgReturn    = data.reduce((sum, d) => sum + d.portfolioReturn, 0) / data.length;
     const avgInflation = data.reduce((sum, d) => sum + d.inflation,       0) / data.length;
@@ -238,7 +367,11 @@ export function renderHistoricSimulationView(container) {
       card.innerHTML = `<div class="ret-card-val">${value}</div><div class="ret-card-lbl">${label}</div>`;
       cards.appendChild(card);
     });
-    container.appendChild(cards);
+    topLeft.appendChild(cards);
+
+    // ── Outcome pie chart (inside right column) ───────────────────────────────
+    const counts = categorizeAllSimulations(s);
+    drawOutcomePie(topRight, counts);
 
     // ── Stacked area chart ────────────────────────────────────────────────────
     const COLORS = {
