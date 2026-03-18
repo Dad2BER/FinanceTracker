@@ -13,7 +13,7 @@ import { renderSettingsView } from "./components/settings/settingsView.js";
 import { renderReportsView }     from "./components/reports/reportsView.js";
 import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
 import { renderAssetsView } from "./components/assets/assetsView.js";
-import { renderRetirementView } from "./components/retirement/retirementView.js";
+import { renderRetirementInputs, renderRetirementSimulation } from "./components/retirement/retirementView.js";
 
 // ── Tab / Page Definitions ─────────────────────────────────────────────────────
 const TABS = [
@@ -31,7 +31,10 @@ const TAB_PAGES = {
     { id: "ytd-spending",  label: "Monthly Spend" },
     { id: "subcat-spend",  label: "Subcategory Spend" },
   ],
-  retirement: [],   // no pages yet
+  retirement: [
+    { id: "ret-inputs",     label: "Inputs" },
+    { id: "ret-simulation", label: "Simple Simulation" },
+  ],
 };
 
 // Maps a content-page id to the sidebar entry that should appear active
@@ -42,6 +45,8 @@ const PAGE_TO_SIDEBAR = {
   "assets":         "assets",
   "ytd-spending":   "ytd-spending",
   "subcat-spend":   "subcat-spend",
+  "ret-inputs":     "ret-inputs",
+  "ret-simulation": "ret-simulation",
 };
 
 // ── View State ────────────────────────────────────────────────────────────────
@@ -440,7 +445,12 @@ function render() {
       renderReportsView(shellContent, _reportAccounts, _reportCategories, _reportOnBack);
     }
   } else if (view.tab === "retirement") {
-    renderRetirementView(shellContent);
+    if (view.page === "ret-simulation") {
+      renderRetirementSimulation(shellContent);
+    } else {
+      renderRetirementInputs(shellContent,
+        () => navigateTo({ tab: "retirement", page: "ret-simulation" }));
+    }
   } else if (view.tab === "settings") {
     renderSettingsView(
       shellContent,
