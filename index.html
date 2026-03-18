@@ -1365,12 +1365,24 @@
 
     /* ── Retirement View ──────────────────────────────────────────────────── */
 
-    /* Inputs page */
+    /* Inputs page — two-column layout */
     .ret-inputs-page {
+      display: grid;
+      grid-template-columns: minmax(320px, 580px) minmax(280px, 1fr);
+      gap: 1.5rem;
+      align-items: start;
+    }
+    .ret-inputs-left {
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
-      max-width: 680px;
+    }
+    .ret-inputs-right {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      position: sticky;
+      top: 1rem;
     }
     .ret-two-col {
       display: grid;
@@ -1626,6 +1638,8 @@
 
     @media (max-width: 1100px) {
       .ret-summary-cards { grid-template-columns: repeat(2, 1fr); }
+      .ret-inputs-page   { grid-template-columns: 1fr; }
+      .ret-inputs-right  { position: static; }
     }
     @media (max-width: 700px) {
       .ret-acct-grid     { grid-template-columns: 1fr; }

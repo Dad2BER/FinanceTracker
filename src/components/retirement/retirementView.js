@@ -172,6 +172,16 @@ export function renderRetirementInputs(container, onViewSimulation) {
   page.className = "ret-inputs-page";
   container.appendChild(page);
 
+  // Left column — all form sections and CTA
+  const leftCol = document.createElement("div");
+  leftCol.className = "ret-inputs-left";
+  page.appendChild(leftCol);
+
+  // Right column — glide path
+  const rightCol = document.createElement("div");
+  rightCol.className = "ret-inputs-right";
+  page.appendChild(rightCol);
+
   // ── Starting Conditions ─────────────────────────────────────────────────────
   const secStart = retSection("Starting Conditions");
   const startGrid = document.createElement("div");
@@ -182,7 +192,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
   startGrid.appendChild(retField("Annual Expenses (today's $)",
     numInput(_s.annualExpenses, v => { _s.annualExpenses = v; }, { min: 0, step: 1000 })));
   secStart.appendChild(startGrid);
-  page.appendChild(secStart);
+  leftCol.appendChild(secStart);
 
   // ── Account Balances ────────────────────────────────────────────────────────
   const secAccts = retSection("Account Balances");
@@ -211,7 +221,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
   acctNote.className = "ret-note";
   acctNote.textContent = "Withdrawal order: Taxable → Tax-Deferred → Tax-Free";
   secAccts.appendChild(acctNote);
-  page.appendChild(secAccts);
+  leftCol.appendChild(secAccts);
 
   // ── Assumptions ─────────────────────────────────────────────────────────────
   const secAssump = retSection("Assumptions");
@@ -241,7 +251,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
     assumpGrid.appendChild(cell);
   });
   secAssump.appendChild(assumpGrid);
-  page.appendChild(secAssump);
+  leftCol.appendChild(secAssump);
 
   // ── Lump Sum Distributions ───────────────────────────────────────────────────
   const secLump = retSection("Lump Sum Distributions");
@@ -256,7 +266,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
   addLumpBtn.className = "btn btn-secondary ret-add-btn";
   addLumpBtn.textContent = "+ Add Distribution";
   secLump.appendChild(addLumpBtn);
-  page.appendChild(secLump);
+  leftCol.appendChild(secLump);
 
   function renderLumpRows() {
     lumpList.innerHTML = "";
@@ -290,7 +300,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
   addAnnBtn.className = "btn btn-secondary ret-add-btn";
   addAnnBtn.textContent = "+ Add Annuity";
   secAnn.appendChild(addAnnBtn);
-  page.appendChild(secAnn);
+  leftCol.appendChild(secAnn);
 
   function renderAnnRows() {
     annList.innerHTML = "";
@@ -311,10 +321,10 @@ export function renderRetirementInputs(container, onViewSimulation) {
   });
   renderAnnRows();
 
-  // ── Glide Path ───────────────────────────────────────────────────────────────
-  page.appendChild(renderGlidePathSection());
+  // ── Glide Path (right column) ─────────────────────────────────────────────────
+  rightCol.appendChild(renderGlidePathSection());
 
-  // ── CTA ──────────────────────────────────────────────────────────────────────
+  // ── CTA (left column) ────────────────────────────────────────────────────────
   if (onViewSimulation) {
     const cta = document.createElement("div");
     cta.className = "ret-cta-row";
@@ -323,7 +333,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
     btn.textContent = "View Simulation →";
     btn.addEventListener("click", onViewSimulation);
     cta.appendChild(btn);
-    page.appendChild(cta);
+    leftCol.appendChild(cta);
   }
 }
 
