@@ -21,12 +21,12 @@ let _s = {
     // Percentages (0–100) must sum to 100 for both start and end.
     // Keys match the app's holding assetType vocabulary.
     allocations: [
-      { key: "stock-fund",  label: "Stock Funds",   startPct: 60, endPct: 30 },
-      { key: "bonds",       label: "Bonds",          startPct: 25, endPct: 55 },
-      { key: "real-estate", label: "Real Estate",    startPct: 10, endPct: 10 },
-      { key: "company",     label: "Company Stock",  startPct:  0, endPct:  0 },
-      { key: "crypto",      label: "Crypto",         startPct:  0, endPct:  0 },
-      { key: "cash",        label: "Cash",           startPct:  5, endPct:  5 },
+      { key: "stock-fund",  label: "Stock Funds (S&P 500)",   startPct: 60, endPct: 30 },
+      { key: "bonds",       label: "Bonds (Baa)",             startPct: 25, endPct: 55 },
+      { key: "real-estate", label: "Real Estate (NAREIT)",    startPct: 10, endPct: 10 },
+      { key: "company",     label: "Company Stock (S&P 500)", startPct:  0, endPct:  0 },
+      { key: "crypto",      label: "Crypto (S&P 500)",        startPct:  0, endPct:  0 },
+      { key: "cash",        label: "Cash (T-Bill 3mo.)",      startPct:  5, endPct:  5 },
     ],
   },
 };
