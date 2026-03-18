@@ -14,6 +14,7 @@ import { renderReportsView }     from "./components/reports/reportsView.js";
 import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
 import { renderAssetsView } from "./components/assets/assetsView.js";
 import { renderRetirementInputs, renderRetirementSimulation } from "./components/retirement/retirementView.js";
+import { renderHistoricReturnsView } from "./components/retirement/historicReturnsView.js";
 
 // ── Tab / Page Definitions ─────────────────────────────────────────────────────
 const TABS = [
@@ -34,6 +35,7 @@ const TAB_PAGES = {
   retirement: [
     { id: "ret-inputs",     label: "Inputs" },
     { id: "ret-simulation", label: "Simple Simulation" },
+    { id: "ret-historic",   label: "Historic Returns" },
   ],
 };
 
@@ -47,6 +49,7 @@ const PAGE_TO_SIDEBAR = {
   "subcat-spend":   "subcat-spend",
   "ret-inputs":     "ret-inputs",
   "ret-simulation": "ret-simulation",
+  "ret-historic":   "ret-historic",
 };
 
 // ── View State ────────────────────────────────────────────────────────────────
@@ -447,6 +450,8 @@ function render() {
   } else if (view.tab === "retirement") {
     if (view.page === "ret-simulation") {
       renderRetirementSimulation(shellContent);
+    } else if (view.page === "ret-historic") {
+      renderHistoricReturnsView(shellContent);
     } else {
       renderRetirementInputs(shellContent,
         () => navigateTo({ tab: "retirement", page: "ret-simulation" }));

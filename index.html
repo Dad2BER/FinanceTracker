@@ -1647,6 +1647,103 @@
       .ret-two-col       { grid-template-columns: 1fr; }
       .ret-summary-cards { grid-template-columns: repeat(2, 1fr); }
     }
+
+    /* ── Historic Returns page ───────────────────────────────────────────────── */
+    .hist-page { display: flex; flex-direction: column; gap: 1.25rem; }
+    .hist-header { display: flex; flex-direction: column; gap: 0.25rem; }
+    .hist-title { font-size: 1.15rem; font-weight: 700; margin: 0; }
+    .hist-subtitle {
+      font-size: 0.8rem; color: var(--color-text-dim);
+      margin: 0; line-height: 1.5;
+    }
+
+    /* shared card wrapper */
+    .hist-page .card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 1rem;
+    }
+
+    .hist-stats-title {
+      font-size: 0.78rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-text-dim); margin-bottom: 0.75rem;
+    }
+
+    /* Summary stats table */
+    .hist-stats-wrap { overflow-x: auto; }
+    .hist-stats-table {
+      border-collapse: collapse; width: 100%;
+      font-size: 0.8rem; white-space: nowrap;
+    }
+    .hist-stats-table th {
+      padding: 0.45rem 0.7rem;
+      text-align: right;
+      font-size: 0.73rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--color-text-dim);
+      border-bottom: 2px solid var(--color-border);
+      background: var(--color-surface-2);
+    }
+    .hist-stats-table th:first-child { text-align: left; }
+    .hist-stats-table td {
+      padding: 0.4rem 0.7rem;
+      text-align: right;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .hist-stats-table tbody tr:last-child td { border-bottom: none; }
+    .hist-stats-table tbody tr:hover td { background: var(--color-surface-2); }
+    .hist-stat-label {
+      text-align: left !important;
+      font-weight: 500; color: var(--color-text-dim);
+    }
+    .hist-col-sub {
+      font-size: 0.65rem; font-weight: 400;
+      text-transform: none; letter-spacing: 0;
+      color: var(--color-text-dim); margin-top: 1px;
+    }
+
+    /* Year-by-year table */
+    .hist-table-wrap {
+      overflow-x: auto;
+      overflow-y: auto;
+      max-height: 520px;
+      border-radius: var(--radius-sm);
+    }
+    .hist-table {
+      border-collapse: collapse; width: 100%;
+      font-size: 0.8rem; white-space: nowrap;
+    }
+    .hist-table thead th {
+      position: sticky; top: 0; z-index: 2;
+      padding: 0.5rem 0.7rem;
+      text-align: right;
+      font-size: 0.73rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--color-text-dim);
+      background: var(--color-surface-2);
+      border-bottom: 2px solid var(--color-border);
+    }
+    .hist-year-col { text-align: left !important; }
+    .hist-table td {
+      padding: 0.32rem 0.7rem;
+      text-align: right;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .hist-year-cell {
+      text-align: left !important;
+      font-weight: 500; color: var(--color-text-dim);
+    }
+    .hist-table tbody tr:hover td { background: var(--color-surface-2); }
+    .hist-table tbody tr:last-child td { border-bottom: none; }
+    .hist-est { font-size: 0.6rem; color: var(--color-text-dim); margin-left: 2px; }
+
+    /* Colour coding */
+    .hist-pos     { color: var(--color-success); }
+    .hist-neg     { color: var(--color-danger); }
+    .hist-neutral { color: var(--color-text-dim); }
+
   </style>
 </head>
 <body>
