@@ -1,5 +1,5 @@
 import { formatCurrency } from "../../utils/currency.js";
-import { getRetirementInputs, saveRetirementInputs } from "../../state.js";
+import { getRetirementInputs, saveRetirementInputs, getRetirementInputsFromStorage, flushRetirementInputs } from "../../state.js";
 
 // ── Shared persisted state ─────────────────────────────────────────────────────
 // _s holds the working copy for the current session.
@@ -7,6 +7,8 @@ import { getRetirementInputs, saveRetirementInputs } from "../../state.js";
 let _s = {
   currentAge:     60,
   annualExpenses: 80000,
+  mortgagePmt:    0,
+  mortgageYears:  0,
   taxable:        500000,
   taxFree:        300000,
   taxDeferred:    700000,
@@ -38,15 +40,25 @@ let _inputAbort = null;   // AbortController for container input listener
 let _persistTimer = null; // debounce handle for saveRetirementInputs
 
 // Merge server-persisted values into _s on first render.
+// localStorage is preferred (always written synchronously on every save) and
+// only falls back to server data when localStorage is empty.
 function ensureLoaded() {
   if (_sLoaded) return;
   _sLoaded = true;
-  const saved = getRetirementInputs();
+
+  let saved = getRetirementInputsFromStorage();
+  if (!saved) {
+    saved = getRetirementInputs();
+  } else if (!getRetirementInputs()) {
+    // localStorage had data but server didn't — re-sync to server.
+    saveRetirementInputs(saved);
+  }
   if (!saved) return;
 
   // Scalar fields
   for (const k of [
-    "currentAge", "annualExpenses", "taxable", "taxFree", "taxDeferred",
+    "currentAge", "annualExpenses", "mortgagePmt", "mortgageYears",
+    "taxable", "taxFree", "taxDeferred",
     "cashYears", "nominalGrowth", "inflation", "taxRate",
   ]) {
     if (typeof saved[k] === "number") _s[k] = saved[k];
@@ -84,6 +96,12 @@ function persistNow() {
   clearTimeout(_persistTimer);
   saveRetirementInputs(_s);
 }
+
+// beforeunload safety net — writes _s to localStorage the instant the page
+// starts to unload, before any async requests can be cancelled.
+window.addEventListener("beforeunload", () => {
+  if (_sLoaded) saveRetirementInputs(_s);
+});
 
 // ── Per-account simulation ─────────────────────────────────────────────────────
 // Withdrawal order: Taxable → Tax-Deferred (grossed up for taxes) → Tax-Free
@@ -128,7 +146,9 @@ function runSimulation(s) {
       .filter(a => age >= a.startAge)
       .reduce((sum, a) => sum + a.amount * inflFactor, 0);
 
-    const realExpenses = s.annualExpenses * inflFactor;
+    // Mortgage payment is a fixed nominal amount — not grown for inflation.
+    const mortgagePmt  = (s.mortgagePmt > 0 && yi < s.mortgageYears) ? s.mortgagePmt : 0;
+    const realExpenses = s.annualExpenses * inflFactor + mortgagePmt;
 
     // ── Cash buffer comes out of the taxable account (earns 0) ─────────────
     const cashTarget   = realExpenses * s.cashYears;
@@ -249,6 +269,10 @@ export function renderRetirementInputs(container, onViewSimulation) {
     numInput(_s.currentAge, v => { _s.currentAge = v; }, { min: 20, max: 90, step: 1 })));
   startGrid.appendChild(retField("Annual Expenses (today's $)",
     numInput(_s.annualExpenses, v => { _s.annualExpenses = v; }, { min: 0, step: 1000 })));
+  startGrid.appendChild(retField("Annual Mortgage PMT",
+    numInput(_s.mortgagePmt,    v => { _s.mortgagePmt    = v; }, { min: 0, step: 100 })));
+  startGrid.appendChild(retField("Mortgage Years Remaining",
+    numInput(_s.mortgageYears,  v => { _s.mortgageYears  = v; }, { min: 0, max: 50, step: 1 })));
   secStart.appendChild(startGrid);
   leftCol.appendChild(secStart);
 
@@ -424,6 +448,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
   if (_inputAbort) _inputAbort.abort();
   _inputAbort = new AbortController();
   const sig = { signal: _inputAbort.signal };
+  container.addEventListener("input", () => flushRetirementInputs(_s), sig);
   container.addEventListener("input",  persist,    sig);
   container.addEventListener("change", persistNow, sig);
 }

@@ -5,6 +5,8 @@ import { generateId } from "./utils/uuid.js";
 let _data = { accounts: [], categories: [], payees: [] };
 let _profileId = null;  // set by initState; passed to saveData on every mutation
 
+const RET_INPUTS_PREFIX = "financetracker_ret_";
+
 export function initState(data, profileId) {
   _profileId = profileId;
   _data = {
@@ -33,9 +35,31 @@ export function getRetirementInputs() {
   return _data.retirementInputs ?? null;
 }
 
+// Writes inputs to localStorage only — synchronous and cheap enough to call on
+// every keystroke.  Does NOT update _data or trigger a server POST.
+export function flushRetirementInputs(inputs) {
+  try {
+    if (_profileId) {
+      window.localStorage.setItem(RET_INPUTS_PREFIX + _profileId, JSON.stringify(inputs));
+    }
+  } catch (e) { /* quota exceeded or private mode — ignore */ }
+}
+
 export function saveRetirementInputs(inputs) {
   _data = { ..._data, retirementInputs: inputs };
-  saveData(_data, _profileId);
+  flushRetirementInputs(inputs);   // synchronous localStorage write
+  saveData(_data, _profileId);     // async server POST (may be cancelled on unload)
+}
+
+export function getRetirementInputsFromStorage(profileId) {
+  const id = profileId || _profileId;
+  if (!id) return null;
+  try {
+    const raw = window.localStorage.getItem(RET_INPUTS_PREFIX + id);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Account Getters ───────────────────────────────────────────────────────────
