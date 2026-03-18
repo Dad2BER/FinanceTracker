@@ -253,75 +253,81 @@ function drawOutcomePie(wrap, counts) {
 export function renderHistoricSimulationView(container) {
   const s = getSimInputs();
 
-  function render() {
-    container.innerHTML = "";
+  container.innerHTML = "";
 
-    // ── Header ──────────────────────────────────────────────────────────────
-    const header = document.createElement("div");
-    header.className = "view-header";
-    const h1 = document.createElement("h1");
-    h1.textContent = "Historic Simulation";
-    header.appendChild(h1);
-    container.appendChild(header);
+  // ── Header (built once) ──────────────────────────────────────────────────
+  const header = document.createElement("div");
+  header.className = "view-header";
+  const h1 = document.createElement("h1");
+  h1.textContent = "Historic Simulation";
+  header.appendChild(h1);
+  container.appendChild(header);
 
-    // ── Year selector (slider) ────────────────────────────────────────────────
-    // Only allow start years with enough data to reach age 95.
-    const lastQualYear = LAST_YEAR - (95 - s.currentAge);
-    _startYear = Math.max(FIRST_YEAR, Math.min(_startYear, lastQualYear));
+  // ── Year selector (built once — never destroyed) ─────────────────────────
+  // Slider max is capped so there is always enough data to reach age 95.
+  const lastQualYear = LAST_YEAR - (95 - s.currentAge);
+  _startYear = Math.max(FIRST_YEAR, Math.min(_startYear, lastQualYear));
 
-    const controls = document.createElement("div");
-    controls.className = "hsim-controls";
+  const controls = document.createElement("div");
+  controls.className = "hsim-controls";
 
-    // Header row: label on left, current year value on right
-    const sliderHeader = document.createElement("div");
-    sliderHeader.className = "hsim-slider-header";
-    const lbl = document.createElement("span");
-    lbl.className = "hsim-year-label";
-    lbl.textContent = "Retirement Start Year:";
-    const valDisplay = document.createElement("span");
-    valDisplay.className = "hsim-year-val";
+  const sliderHeader = document.createElement("div");
+  sliderHeader.className = "hsim-slider-header";
+  const lbl = document.createElement("span");
+  lbl.className = "hsim-year-label";
+  lbl.textContent = "Retirement Start Year:";
+  const valDisplay = document.createElement("span");
+  valDisplay.className = "hsim-year-val";
+  valDisplay.textContent = _startYear;
+  sliderHeader.appendChild(lbl);
+  sliderHeader.appendChild(valDisplay);
+  controls.appendChild(sliderHeader);
+
+  const slider = document.createElement("input");
+  slider.type      = "range";
+  slider.className = "hsim-year-slider";
+  slider.min       = FIRST_YEAR;
+  slider.max       = lastQualYear;
+  slider.value     = _startYear;
+  // "input" fires on every tick (drag + arrow keys) — update label only, no re-render
+  slider.addEventListener("input", () => {
+    _startYear = parseInt(slider.value, 10);
     valDisplay.textContent = _startYear;
-    sliderHeader.appendChild(lbl);
-    sliderHeader.appendChild(valDisplay);
-    controls.appendChild(sliderHeader);
+  });
+  // "change" fires when the user releases the thumb OR finishes an arrow-key sequence
+  // We re-render only the results div below, keeping the slider in place with focus intact.
+  slider.addEventListener("change", () => {
+    _startYear = parseInt(slider.value, 10);
+    renderResults();
+  });
+  controls.appendChild(slider);
 
-    // Slider — dragging updates label live; releasing re-renders
-    const slider = document.createElement("input");
-    slider.type  = "range";
-    slider.className = "hsim-year-slider";
-    slider.min   = FIRST_YEAR;
-    slider.max   = lastQualYear;
-    slider.value = _startYear;
-    slider.addEventListener("input", () => {
-      _startYear = parseInt(slider.value, 10);
-      valDisplay.textContent = _startYear;
-    });
-    slider.addEventListener("change", () => {
-      _startYear = parseInt(slider.value, 10);
-      render();
-    });
-    controls.appendChild(slider);
+  const ticks = document.createElement("div");
+  ticks.className = "hsim-slider-ticks";
+  ticks.innerHTML =
+    `<span>${FIRST_YEAR}</span>` +
+    `<span class="hsim-year-hint">${lastQualYear - FIRST_YEAR + 1} qualifying start years · ` +
+      `use ← → keys for fine control</span>` +
+    `<span>${lastQualYear}</span>`;
+  controls.appendChild(ticks);
+  container.appendChild(controls);
 
-    // Tick labels: min year — count — max year
-    const ticks = document.createElement("div");
-    ticks.className = "hsim-slider-ticks";
-    ticks.innerHTML =
-      `<span>${FIRST_YEAR}</span>` +
-      `<span class="hsim-year-hint">${lastQualYear - FIRST_YEAR + 1} qualifying start years · ` +
-        `use ← → keys for fine control</span>` +
-      `<span>${lastQualYear}</span>`;
-    controls.appendChild(ticks);
+  // ── Results container (replaced on every renderResults call) ─────────────
+  const resultsDiv = document.createElement("div");
+  container.appendChild(resultsDiv);
 
-    container.appendChild(controls);
+  // ── renderResults — only rebuilds content below the slider ───────────────
+  function renderResults() {
+    resultsDiv.innerHTML = "";
 
-    // ── Run selected simulation ───────────────────────────────────────────────
+    // ── Run selected simulation ────────────────────────────────────────────
     const data = runHistoricSimulation(s, _startYear);
 
     if (data.length === 0) {
       const msg = document.createElement("p");
       msg.className = "ret-note";
       msg.textContent = `No historic data available starting in ${_startYear}.`;
-      container.appendChild(msg);
+      resultsDiv.appendChild(msg);
       return;
     }
 
@@ -331,10 +337,10 @@ export function renderHistoricSimulationView(container) {
     const depletionAge = depleted ? lastPt.age : null;
     const totalStart   = s.taxable + s.taxFree + s.taxDeferred;
 
-    // ── Top row: headline + summary (left) | pie chart (right) ───────────────
+    // ── Top row: headline + summary (left) | pie chart (right) ────────────
     const topRow = document.createElement("div");
     topRow.className = "hsim-top-row";
-    container.appendChild(topRow);
+    resultsDiv.appendChild(topRow);
 
     const topLeft = document.createElement("div");
     topLeft.className = "hsim-top-left";
@@ -344,7 +350,7 @@ export function renderHistoricSimulationView(container) {
     topRight.className = "hsim-top-right";
     topRow.appendChild(topRight);
 
-    // ── Headline card (inside left column) ───────────────────────────────────
+    // ── Headline card ──────────────────────────────────────────────────────
     const headline = document.createElement("div");
     headline.className = "ret-headline-card";
     if (depleted) {
@@ -368,7 +374,7 @@ export function renderHistoricSimulationView(container) {
     }
     topLeft.appendChild(headline);
 
-    // ── Summary cards (inside left column) ───────────────────────────────────
+    // ── Summary cards ──────────────────────────────────────────────────────
     const midPt        = data[Math.floor(data.length / 2)];
     const avgReturn    = data.reduce((sum, d) => sum + d.portfolioReturn, 0) / data.length;
     const avgInflation = data.reduce((sum, d) => sum + d.inflation,       0) / data.length;
@@ -388,11 +394,11 @@ export function renderHistoricSimulationView(container) {
     });
     topLeft.appendChild(cards);
 
-    // ── Outcome pie chart (inside right column) ───────────────────────────────
+    // ── Outcome pie chart ──────────────────────────────────────────────────
     const counts = categorizeAllSimulations(s);
     drawOutcomePie(topRight, counts);
 
-    // ── Stacked area chart ────────────────────────────────────────────────────
+    // ── Stacked area chart ─────────────────────────────────────────────────
     const COLORS = {
       taxable:    "#3b82f6",
       taxDeferred: "#f59e0b",
@@ -402,7 +408,7 @@ export function renderHistoricSimulationView(container) {
     const chartWrap = document.createElement("div");
     chartWrap.className = "ret-chart-wrap";
     chartWrap.style.position = "relative";
-    container.appendChild(chartWrap);
+    resultsDiv.appendChild(chartWrap);
 
     const tooltip = document.createElement("div");
     tooltip.className = "report-tooltip";
@@ -614,7 +620,7 @@ export function renderHistoricSimulationView(container) {
     drawChart();
     window.addEventListener("resize", drawChart, { once: true });
 
-    // ── Legend ────────────────────────────────────────────────────────────────
+    // ── Legend ────────────────────────────────────────────────────────────
     const legend = document.createElement("div");
     legend.className = "ret-chart-legend";
     [["Taxable", COLORS.taxable], ["Tax-Deferred", COLORS.taxDeferred], ["Tax-Free", COLORS.taxFree]].forEach(([lbl, color]) => {
@@ -623,12 +629,12 @@ export function renderHistoricSimulationView(container) {
       item.innerHTML = `<span class="ret-legend-dot" style="background:${color}"></span>${lbl}`;
       legend.appendChild(item);
     });
-    container.appendChild(legend);
+    resultsDiv.appendChild(legend);
 
-    // ── Year-by-year table ────────────────────────────────────────────────────
+    // ── Year-by-year table ────────────────────────────────────────────────
     const tableWrap = document.createElement("div");
     tableWrap.className = "hist-table-wrap hsim-table-wrap";
-    container.appendChild(tableWrap);
+    resultsDiv.appendChild(tableWrap);
 
     const table = document.createElement("table");
     table.className = "hist-table hsim-table";
@@ -644,7 +650,7 @@ export function renderHistoricSimulationView(container) {
     const tbody = document.createElement("tbody");
     data.forEach(d => {
       const tr = document.createElement("tr");
-      const retClass = d.portfolioReturn >= 0 ? "hist-pos" : "hist-neg";
+      const retClass  = d.portfolioReturn >= 0 ? "hist-pos" : "hist-neg";
       const inflClass = d.inflation > 5 ? "hist-neg" : d.inflation < 0 ? "hist-pos" : "";
       tr.innerHTML = `
         <td class="hist-year-cell">${d.year}</td>
@@ -661,5 +667,5 @@ export function renderHistoricSimulationView(container) {
     tableWrap.appendChild(table);
   }
 
-  render();
+  renderResults();
 }
