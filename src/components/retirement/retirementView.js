@@ -13,6 +13,19 @@ let _s = {
   taxRate:        22,
   lumpSums:  [],   // [{ age, amount }]
   annuities: [],   // [{ startAge, amount }]
+  glidePath: {
+    transitionYears: 20,
+    // Percentages (0–100) must sum to 100 for both start and end.
+    // Keys match the app's holding assetType vocabulary.
+    allocations: [
+      { key: "stock-fund",  label: "Stock Funds",   startPct: 60, endPct: 30 },
+      { key: "bonds",       label: "Bonds",          startPct: 25, endPct: 55 },
+      { key: "real-estate", label: "Real Estate",    startPct: 10, endPct: 10 },
+      { key: "company",     label: "Company Stock",  startPct:  0, endPct:  0 },
+      { key: "crypto",      label: "Crypto",         startPct:  0, endPct:  0 },
+      { key: "cash",        label: "Cash",           startPct:  5, endPct:  5 },
+    ],
+  },
 };
 
 // ── Per-account simulation ─────────────────────────────────────────────────────
@@ -297,6 +310,9 @@ export function renderRetirementInputs(container, onViewSimulation) {
     renderAnnRows();
   });
   renderAnnRows();
+
+  // ── Glide Path ───────────────────────────────────────────────────────────────
+  page.appendChild(renderGlidePathSection());
 
   // ── CTA ──────────────────────────────────────────────────────────────────────
   if (onViewSimulation) {
@@ -699,6 +715,117 @@ export function renderRetirementSimulation(container) {
   tbl.appendChild(tbody);
   tableWrap.appendChild(tbl);
   container.appendChild(tableWrap);
+}
+
+// ── Glide Path Section ────────────────────────────────────────────────────────
+function renderGlidePathSection() {
+  const sec = retSection("Glide Path");
+
+  const desc = document.createElement("p");
+  desc.className = "ret-note";
+  desc.textContent =
+    "Define how your asset allocation should shift over time. " +
+    "Percentages must sum to 100% for both the starting and ending targets.";
+  sec.appendChild(desc);
+
+  // Years to transition
+  const yearsRow = document.createElement("div");
+  yearsRow.className = "ret-glide-years-row";
+  const yearsLbl = document.createElement("span");
+  yearsLbl.className = "ret-label";
+  yearsLbl.textContent = "Years to transition";
+  const yearsInput = numInput(
+    _s.glidePath.transitionYears,
+    v => { _s.glidePath.transitionYears = Math.max(1, Math.round(v)); },
+    { min: 1, max: 50, step: 1 }
+  );
+  const yearsUnit = document.createElement("span");
+  yearsUnit.className = "ret-unit";
+  yearsUnit.textContent = "yrs";
+  yearsRow.appendChild(yearsLbl);
+  yearsRow.appendChild(yearsInput);
+  yearsRow.appendChild(yearsUnit);
+  sec.appendChild(yearsRow);
+
+  // Allocation table
+  const tbl = document.createElement("table");
+  tbl.className = "ret-glide-table";
+
+  const thead = document.createElement("thead");
+  thead.innerHTML = `
+    <tr>
+      <th>Asset Type</th>
+      <th>Starting Target</th>
+      <th>Ending Target</th>
+    </tr>`;
+  tbl.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+
+  // Keep references to total cells so we can update them live
+  const startTotalCell = document.createElement("td");
+  const endTotalCell   = document.createElement("td");
+
+  function refreshTotals() {
+    const startSum = _s.glidePath.allocations.reduce((s, a) => s + (a.startPct || 0), 0);
+    const endSum   = _s.glidePath.allocations.reduce((s, a) => s + (a.endPct   || 0), 0);
+    const fmt = (v, cell) => {
+      cell.textContent = v + "%";
+      cell.className   = "ret-glide-total-val " + (v === 100 ? "ret-glide-ok" : "ret-glide-err");
+    };
+    fmt(startSum, startTotalCell);
+    fmt(endSum,   endTotalCell);
+  }
+
+  _s.glidePath.allocations.forEach((alloc, i) => {
+    const tr = document.createElement("tr");
+
+    const labelTd = document.createElement("td");
+    labelTd.className = "ret-glide-label";
+    labelTd.textContent = alloc.label;
+
+    const makePercentTd = (key) => {
+      const td = document.createElement("td");
+      const wrap = document.createElement("div");
+      wrap.className = "ret-input-unit-row";
+      const inp = numInput(alloc[key], v => {
+        _s.glidePath.allocations[i][key] = Math.max(0, Math.min(100, Math.round(v)));
+        refreshTotals();
+      }, { min: 0, max: 100, step: 1 });
+      inp.style.width = "72px";
+      const unit = document.createElement("span");
+      unit.className = "ret-unit";
+      unit.textContent = "%";
+      wrap.appendChild(inp);
+      wrap.appendChild(unit);
+      td.appendChild(wrap);
+      return td;
+    };
+
+    tr.appendChild(labelTd);
+    tr.appendChild(makePercentTd("startPct"));
+    tr.appendChild(makePercentTd("endPct"));
+    tbody.appendChild(tr);
+  });
+
+  // Totals row
+  const totalsTr = document.createElement("tr");
+  totalsTr.className = "ret-glide-totals-row";
+  const totalLabelTd = document.createElement("td");
+  totalLabelTd.className = "ret-glide-totals-label";
+  totalLabelTd.textContent = "Total";
+  totalsTr.appendChild(totalLabelTd);
+  totalsTr.appendChild(startTotalCell);
+  totalsTr.appendChild(endTotalCell);
+  tbody.appendChild(totalsTr);
+
+  tbl.appendChild(tbody);
+  sec.appendChild(tbl);
+
+  // Initialise totals display
+  refreshTotals();
+
+  return sec;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
