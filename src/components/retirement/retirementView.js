@@ -71,11 +71,18 @@ function ensureLoaded() {
   }
 }
 
-// Debounced save — fires 400ms after the last change so we don't flood the server
-// on rapid keystrokes.
+// Debounced save — fires 150ms after the last keystroke to avoid flooding the
+// server while the user is still typing.
 function persist() {
   clearTimeout(_persistTimer);
-  _persistTimer = setTimeout(() => saveRetirementInputs(_s), 400);
+  _persistTimer = setTimeout(() => saveRetirementInputs(_s), 150);
+}
+
+// Immediate save — used for field-commit events (change/blur) and button clicks
+// where timing is critical (e.g. the user might refresh right after).
+function persistNow() {
+  clearTimeout(_persistTimer);
+  saveRetirementInputs(_s);
 }
 
 // ── Per-account simulation ─────────────────────────────────────────────────────
@@ -327,7 +334,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
             { min: _s.currentAge, max: 100, step: 1 }],
          ["Amount ($)", ls.amount, v => { _s.lumpSums[i].amount = v; },
             { min: 0, step: 1000 }]],
-        () => { _s.lumpSums.splice(i, 1); renderLumpRows(); persist(); }
+        () => { _s.lumpSums.splice(i, 1); renderLumpRows(); persistNow(); }
       ));
     });
     addLumpBtn.style.display = _s.lumpSums.length >= 2 ? "none" : "";
@@ -335,7 +342,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
   addLumpBtn.addEventListener("click", () => {
     _s.lumpSums.push({ age: _s.currentAge + 5, amount: 50000 });
     renderLumpRows();
-    persist();
+    persistNow();
   });
   renderLumpRows();
 
@@ -362,7 +369,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
             { min: _s.currentAge, max: 100, step: 1 }],
          ["Annual ($)", a.amount, v => { _s.annuities[i].amount = v; },
             { min: 0, step: 500 }]],
-        () => { _s.annuities.splice(i, 1); renderAnnRows(); persist(); }
+        () => { _s.annuities.splice(i, 1); renderAnnRows(); persistNow(); }
       ));
     });
     addAnnBtn.style.display = _s.annuities.length >= 2 ? "none" : "";
@@ -370,7 +377,7 @@ export function renderRetirementInputs(container, onViewSimulation) {
   addAnnBtn.addEventListener("click", () => {
     _s.annuities.push({ startAge: _s.currentAge + 2, amount: 24000 });
     renderAnnRows();
-    persist();
+    persistNow();
   });
   renderAnnRows();
 
@@ -390,12 +397,16 @@ export function renderRetirementInputs(container, onViewSimulation) {
   }
 
   // ── Auto-save on any input change ────────────────────────────────────────────
-  // All number inputs bubble their "input" event up to the container.
-  // We debounce to avoid flooding the server on rapid keystrokes.
-  // AbortController ensures only one listener is active at a time.
+  // Two complementary listeners on the container (both events bubble):
+  //   "input"  — fires on every keystroke; debounced 150ms to avoid flooding.
+  //   "change" — fires when a field commits (blur / tab / enter); saves immediately
+  //              so data is never lost if the user refreshes right after editing.
+  // AbortController ensures only one pair of listeners is active at a time.
   if (_inputAbort) _inputAbort.abort();
   _inputAbort = new AbortController();
-  container.addEventListener("input", persist, { signal: _inputAbort.signal });
+  const sig = { signal: _inputAbort.signal };
+  container.addEventListener("input",  persist,    sig);
+  container.addEventListener("change", persistNow, sig);
 }
 
 // ── SIMULATION PAGE ───────────────────────────────────────────────────────────
