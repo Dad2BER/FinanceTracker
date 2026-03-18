@@ -279,17 +279,36 @@ export function renderRetirementInputs(container, onViewSimulation) {
   acctNote.className = "ret-note";
   acctNote.textContent = "Withdrawal order: Taxable → Tax-Deferred → Tax-Free";
   secAccts.appendChild(acctNote);
+  // Effective Tax Rate lives here — applied when grossing up Tax-Deferred withdrawals
+  const taxRateRow = document.createElement("div");
+  taxRateRow.className = "ret-two-col";
+  const taxRateCell = document.createElement("div");
+  taxRateCell.className = "ret-assump-cell";
+  const taxRateLbl = document.createElement("div");
+  taxRateLbl.className = "ret-label";
+  taxRateLbl.textContent = "Effective Tax Rate";
+  const taxRateInputRow = document.createElement("div");
+  taxRateInputRow.className = "ret-input-unit-row";
+  const taxRateInp = numInput(_s.taxRate, v => { _s.taxRate = v; }, { min: 0, max: 60, step: 1 });
+  const taxRateUnit = document.createElement("span");
+  taxRateUnit.className = "ret-unit";
+  taxRateUnit.textContent = "%";
+  taxRateInputRow.appendChild(taxRateInp);
+  taxRateInputRow.appendChild(taxRateUnit);
+  taxRateCell.appendChild(taxRateLbl);
+  taxRateCell.appendChild(taxRateInputRow);
+  taxRateRow.appendChild(taxRateCell);
+  secAccts.appendChild(taxRateRow);
   leftCol.appendChild(secAccts);
 
-  // ── Assumptions ─────────────────────────────────────────────────────────────
-  const secAssump = retSection("Assumptions");
+  // ── Simple Assumptions ──────────────────────────────────────────────────────
+  const secAssump = retSection("Simple Assumptions");
   const assumpGrid = document.createElement("div");
   assumpGrid.className = "ret-assump-grid";
   [
     ["Years of Expenses in Cash", "cashYears",     { min: 0, max: 10,  step: 0.5 }, "yrs"],
     ["Nominal Growth Rate",       "nominalGrowth", { min: 0, max: 20,  step: 0.1 }, "%"  ],
     ["Inflation Rate",            "inflation",     { min: 0, max: 15,  step: 0.1 }, "%"  ],
-    ["Effective Tax Rate",        "taxRate",       { min: 0, max: 60,  step: 1   }, "%"  ],
   ].forEach(([label, key, opts, unit]) => {
     const cell = document.createElement("div");
     cell.className = "ret-assump-cell";
@@ -802,7 +821,7 @@ export function renderRetirementSimulation(container) {
 
 // ── Glide Path Section ────────────────────────────────────────────────────────
 function renderGlidePathSection() {
-  const sec = retSection("Glide Path");
+  const sec = retSection("Historic Simulation Inputs");
 
   const desc = document.createElement("p");
   desc.className = "ret-note";
