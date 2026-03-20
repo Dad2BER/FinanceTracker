@@ -16,8 +16,13 @@ let _s = {
   nominalGrowth:  7,
   inflation:      3,
   taxRate:        22,
-  lumpSums:  [],   // [{ age, amount }]
-  annuities: [],   // [{ startAge, amount }]
+  ssInsolvency:   false, // when true, SS benefits are reduced 20%
+  lumpSums:      [],   // [{ age, amount }]
+  annuities:     [],   // [{ startAge, amount }]
+  incomeSources: [     // Social Security & fixed income (monthly, today's $)
+    { label: "Primary", startAge: 67, monthlyAmount: 0 },
+    { label: "Spouse",  startAge: 67, monthlyAmount: 0 },
+  ],
   glidePath: {
     transitionYears: 20,
     // Percentages (0–100) must sum to 100 for both start and end.
@@ -64,9 +69,22 @@ function ensureLoaded() {
     if (typeof saved[k] === "number") _s[k] = saved[k];
   }
 
+  // Boolean flags
+  if (typeof saved.ssInsolvency === "boolean") _s.ssInsolvency = saved.ssInsolvency;
+
   // Lists
   if (Array.isArray(saved.lumpSums))  _s.lumpSums  = saved.lumpSums;
   if (Array.isArray(saved.annuities)) _s.annuities = saved.annuities;
+
+  // Income sources (Social Security)
+  if (Array.isArray(saved.incomeSources)) {
+    saved.incomeSources.forEach((src, i) => {
+      if (i < _s.incomeSources.length) {
+        if (typeof src.startAge      === "number") _s.incomeSources[i].startAge      = src.startAge;
+        if (typeof src.monthlyAmount === "number") _s.incomeSources[i].monthlyAmount = src.monthlyAmount;
+      }
+    });
+  }
 
   // Glide path
   if (saved.glidePath) {
@@ -145,6 +163,10 @@ function runSimulation(s) {
     const annuityIncome = s.annuities
       .filter(a => age >= a.startAge)
       .reduce((sum, a) => sum + a.amount * inflFactor, 0);
+    const ssFactor = s.ssInsolvency ? 0.8 : 1.0;
+    const ssIncome = (s.incomeSources || [])
+      .filter(src => age >= src.startAge && src.monthlyAmount > 0)
+      .reduce((sum, src) => sum + src.monthlyAmount * 12 * inflFactor * ssFactor, 0);
 
     // Mortgage payment is a fixed nominal amount — not grown for inflation.
     const mortgagePmt  = (s.mortgagePmt > 0 && yi < s.mortgageYears) ? s.mortgagePmt : 0;
@@ -161,7 +183,7 @@ function runSimulation(s) {
     taxFree    = taxFree                    * (1 + g);
 
     // ── Withdrawals ─────────────────────────────────────────────────────────
-    let needed = Math.max(0, realExpenses - annuityIncome);
+    let needed = Math.max(0, realExpenses - annuityIncome - ssIncome);
 
     // 1. From taxable (no tax grossup)
     if (needed > 0) {
@@ -423,6 +445,65 @@ export function renderRetirementInputs(container, onViewSimulation) {
     persistNow();
   });
   renderAnnRows();
+
+  // ── Social Security & Income Sources ─────────────────────────────────────────
+  const secSS = retSection("Social Security & Income Sources");
+  const ssNote = document.createElement("p");
+  ssNote.className = "ret-note";
+  ssNote.textContent = "Monthly benefit in today's dollars — inflation-adjusted annually (SS COLA).";
+  secSS.appendChild(ssNote);
+
+  // SS Insolvency checkbox — reduces all SS benefits by 20% in simulations
+  const hintUpdaters = []; // populated below; refreshed when checkbox toggles
+  const insolvencyLabel = document.createElement("label");
+  insolvencyLabel.className = "ret-ss-insolvency-row";
+  const insolvencyCheck = document.createElement("input");
+  insolvencyCheck.type    = "checkbox";
+  insolvencyCheck.checked = !!_s.ssInsolvency;
+  insolvencyCheck.addEventListener("change", () => {
+    _s.ssInsolvency = insolvencyCheck.checked;
+    hintUpdaters.forEach(fn => fn());
+    persistNow();
+  });
+  insolvencyLabel.appendChild(insolvencyCheck);
+  insolvencyLabel.appendChild(document.createTextNode(" SS Insolvency (−20% benefits)"));
+  secSS.appendChild(insolvencyLabel);
+
+  (_s.incomeSources || []).forEach((src, i) => {
+    const grp = document.createElement("div");
+    grp.className = "ret-ss-group";
+    const grpLbl = document.createElement("div");
+    grpLbl.className = "ret-ss-group-title";
+    grpLbl.textContent = src.label;
+    grp.appendChild(grpLbl);
+    const row = document.createElement("div");
+    row.className = "ret-two-col";
+    row.appendChild(retField("Start Age",
+      numInput(src.startAge, v => { _s.incomeSources[i].startAge = v; }, { min: 60, max: 85, step: 1 })));
+
+    const annualHint = document.createElement("span");
+    annualHint.className = "ret-ss-annual-hint";
+    const updateHint = () => {
+      const monthly   = _s.incomeSources[i].monthlyAmount;
+      const effective = monthly * (_s.ssInsolvency ? 0.8 : 1.0);
+      annualHint.textContent = monthly > 0
+        ? `= ${formatCurrency(effective * 12)}/yr${_s.ssInsolvency ? " (−20%)" : ""}`
+        : "";
+    };
+    hintUpdaters.push(updateHint);
+    updateHint();
+    const monthlyInput = numInput(src.monthlyAmount, v => {
+      _s.incomeSources[i].monthlyAmount = v;
+      updateHint();
+    }, { min: 0, step: 100 });
+    const monthlyField = retField("Monthly Benefit ($)", monthlyInput);
+    monthlyField.appendChild(annualHint);
+    row.appendChild(monthlyField);
+
+    grp.appendChild(row);
+    secSS.appendChild(grp);
+  });
+  leftCol.appendChild(secSS);
 
   // ── Glide Path (right column) ─────────────────────────────────────────────────
   rightCol.appendChild(renderGlidePathSection());
@@ -812,6 +893,7 @@ export function renderRetirementSimulation(container) {
   for (let a = _s.currentAge; a <= (depletionAge ?? 100); a += 5) milestones.add(a);
   _s.lumpSums.forEach(l  => milestones.add(l.age));
   _s.annuities.forEach(a => milestones.add(a.startAge));
+  (_s.incomeSources || []).filter(src => src.monthlyAmount > 0).forEach(src => milestones.add(src.startAge));
   if (depletionAge !== null) milestones.add(depletionAge);
 
   [...milestones].sort((a, b) => a - b).forEach(age => {
@@ -822,6 +904,8 @@ export function renderRetirementSimulation(container) {
       notes.push(`Lump sum +${formatCurrency(l.amount)}`));
     _s.annuities.filter(a => a.startAge === age).forEach(a =>
       notes.push(`Annuity starts (${formatCurrency(a.amount)}/yr)`));
+    (_s.incomeSources || []).filter(src => src.startAge === age && src.monthlyAmount > 0).forEach(src =>
+      notes.push(`${src.label} SS starts (${formatCurrency(src.monthlyAmount)}/mo)`));
     if (age === depletionAge) notes.push("Portfolio depleted");
 
     const tr = document.createElement("tr");

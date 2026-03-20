@@ -1,4 +1,4 @@
-import { renderSummaryCards } from "../dashboard/summaryCards.js";
+import { renderSummaryCards, makeNetWorthCard } from "../dashboard/summaryCards.js";
 import { showAccountForm } from "./accountForm.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
@@ -392,6 +392,9 @@ export function renderAccountList(
     section.appendChild(grid);
     container.appendChild(section);
   }
+
+  // ── Net Worth Over Time ───────────────────────────────────────────────────
+  container.appendChild(makeNetWorthCard(accounts, prices, pricesLoading));
 
   // ── Bottom action bar ─────────────────────────────────────────────────────
   const actionsBar = document.createElement("div");

@@ -69,6 +69,10 @@ function runHistoricSimulation(s, startYear) {
     const annuityIncome = s.annuities
       .filter(a => age >= a.startAge)
       .reduce((sum, a) => sum + a.amount * cumulativeInflation, 0);
+    const ssFactor = s.ssInsolvency ? 0.8 : 1.0;
+    const ssIncome = (s.incomeSources || [])
+      .filter(src => age >= src.startAge && src.monthlyAmount > 0)
+      .reduce((sum, src) => sum + src.monthlyAmount * 12 * cumulativeInflation * ssFactor, 0);
 
     // ── Total nominal spending need ───────────────────────────────────────────
     // Annual expenses are in today's $ → inflate; mortgage is already nominal.
@@ -86,7 +90,7 @@ function runHistoricSimulation(s, startYear) {
     taxFree    = taxFree                    * (1 + portfolioReturn);
 
     // ── Withdrawals ───────────────────────────────────────────────────────────
-    let needed = Math.max(0, nominalExpenses - annuityIncome);
+    let needed = Math.max(0, nominalExpenses - annuityIncome - ssIncome);
 
     if (needed > 0) { // 1. Taxable
       const draw = Math.min(taxable, needed);
@@ -166,7 +170,7 @@ function categorizeAllSimulations(s) {
 }
 
 // ── Outcome pie chart ──────────────────────────────────────────────────────────
-function drawOutcomePie(wrap, counts) {
+export function drawOutcomePie(wrap, counts) {
   const { insufficient, sufficient, excess, total } = counts;
 
   const title = document.createElement("div");

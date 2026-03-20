@@ -16,6 +16,8 @@ import { renderAssetsView } from "./components/assets/assetsView.js";
 import { renderRetirementInputs, renderRetirementSimulation } from "./components/retirement/retirementView.js";
 import { renderHistoricReturnsView } from "./components/retirement/historicReturnsView.js";
 import { renderHistoricSimulationView } from "./components/retirement/historicSimulationView.js";
+import { renderMonteCarloView } from "./components/retirement/monteCarloView.js";
+import { renderWithdrawalStrategiesView } from "./components/retirement/withdrawalStrategiesView.js";
 
 // ── Tab / Page Definitions ─────────────────────────────────────────────────────
 const TABS = [
@@ -37,6 +39,8 @@ const TAB_PAGES = {
     { id: "ret-inputs",      label: "Inputs" },
     { id: "ret-simulation",  label: "Simple Simulation" },
     { id: "ret-historic-sim",label: "Historic Simulation" },
+    { id: "ret-monte-carlo", label: "Monte Carlo" },
+    { id: "ret-strategies",  label: "Withdrawal Strategies" },
     { id: "ret-historic",    label: "Historic Returns" },
   ],
 };
@@ -52,6 +56,8 @@ const PAGE_TO_SIDEBAR = {
   "ret-inputs":       "ret-inputs",
   "ret-simulation":   "ret-simulation",
   "ret-historic-sim": "ret-historic-sim",
+  "ret-monte-carlo":  "ret-monte-carlo",
+  "ret-strategies":   "ret-strategies",
   "ret-historic":     "ret-historic",
 };
 
@@ -455,6 +461,10 @@ function render() {
       renderRetirementSimulation(shellContent);
     } else if (view.page === "ret-historic-sim") {
       renderHistoricSimulationView(shellContent);
+    } else if (view.page === "ret-monte-carlo") {
+      renderMonteCarloView(shellContent);
+    } else if (view.page === "ret-strategies") {
+      renderWithdrawalStrategiesView(shellContent);
     } else if (view.page === "ret-historic") {
       renderHistoricReturnsView(shellContent);
     } else {
