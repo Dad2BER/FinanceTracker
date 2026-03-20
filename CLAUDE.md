@@ -1,53 +1,258 @@
-# CLAUDE.md
+# CLAUDE.md — Finance Tracker
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
+
+---
+
+## Git & Workflow
+
+- **Commit to `master` after every completed feature.** No branches needed — commit directly and `git push origin master`.
+- There are no CI checks, linters, or tests. The commit is the checkpoint.
+- The worktree at `.claude/worktrees/amazing-nightingale/` mirrors this repo but the **server always serves from the main project directory** (`C:\Claude\FinanceTracker\`). Always edit files here; never rely on worktree copies being picked up by the running server.
+
+---
 
 ## Running the App
 
-No build step required, but the app **must be served over a local web server** (not opened as a `file://` URL) due to ES module restrictions.
-
-Ensure the local web server is running before testing:
+The app **must be served over HTTP** — ES modules refuse to load from `file://` URLs.
 
 ```bash
+# From C:\Claude\FinanceTracker\
+python server.py          # custom server on port 3000 (preferred)
+# or
 npx serve .
 # or
-python -m http.server
+python -m http.server 3000
 ```
 
-Then open `http://localhost:3000` (or whichever port the server reports).
+Open `http://localhost:3000`. After editing files, a **Ctrl+Shift+R** (hard reload) is sufficient — no build step.
 
-There are no tests, no linter, and no package.json.
+There are no tests, no linter, no `package.json`, and no build step of any kind.
+
+---
 
 ## Architecture
 
-This is a zero-dependency, no-build vanilla JS SPA using native ES modules (`type="module"`).
+Zero-dependency vanilla JS SPA using native ES modules (`type="module"`). No framework, no bundler.
 
-**Entry points:**
-- `index.html` — single file containing all CSS (via `<style>`) and loads `src/app.js`
-- `src/app.js` — bootstraps the app, owns view routing and price-fetch state
+### Entry Points
+| File | Role |
+|------|------|
+| `index.html` | All CSS lives here in one `<style>` block; loads `src/app.js` |
+| `src/app.js` | App bootstrap, shell/navigation, price-fetch orchestration |
 
-**State layer (`src/state.js`):**
-Central reactive store using a simple pub/sub pattern. Holds all account and holding data. Components call exported CRUD functions (`addAccount`, `updateHolding`, etc.) which mutate state, persist to localStorage, and notify all subscribers. Components never write to localStorage directly.
+### Navigation Model (`src/app.js`)
+- Three top-level **tabs**: `finances`, `reports`, `retirement` (plus `settings`)
+- Each tab has **sidebar pages** defined in `TAB_PAGES`
+- View state is `{ tab, page, accountId? }` — no router library; navigation is `view = newView; render()`
+- `PAGE_TO_SIDEBAR` maps content page IDs to their active sidebar entry
 
-**Two views, managed in `app.js`:**
-- `accounts` — shows the account grid
-- `account-detail` — shows holdings for one account
-
-Navigation is just `view = newView; render()` — no router library.
-
-**Price state** is local to `app.js` (not in `state.js`). Prices are fetched from Finnhub on every navigation and stored in `prices`, `pricesLoading`, `pricesError` variables, then passed down to components as props.
-
-**Persistence:**
-- Account/holding data: `localStorage["financetracker_v1"]`
-- Finnhub API key: `localStorage["financetracker_apikey"]` and `window.__FINNHUB_API_KEY__`
-
-**Component conventions:**
-- Components are plain functions that accept a container element and data, then set `container.innerHTML` or `appendChild`
-- Modal (`src/components/ui/modal.js`) is a singleton with `Modal.open(el)` / `Modal.close()`
-- Forms (account, holding) open inside the Modal; on submit they call state functions and `Modal.close()`
-
-**Data model:**
+**Current tab/page tree:**
 ```
-Account { id, name, taxType ("taxable"|"tax-free"|"tax-deferred"), createdAt, holdings[] }
-Holding { id, symbol, shares, origin? ("domestic"|"international"), assetType? ("stock-fund"|"real-estate"|"company"|"crypto"|"bonds"|"cash") }
+finances
+  ├── summary        (Portfolio / account grid)
+  ├── assets         (Assets view)
+  ├── account-detail (Holdings for one account — not in sidebar)
+  └── ledger-detail  (Transactions for one ledger account — not in sidebar)
+
+reports
+  ├── ytd-spending   (Monthly Spend)
+  └── subcat-spend   (Subcategory Spend)
+
+retirement
+  ├── ret-inputs          (Inputs / Starting Conditions)
+  ├── ret-simulation      (Simple Simulation)
+  ├── ret-historic-sim    (Historic Simulation)
+  └── ret-historic        (Historic Returns table)
+
+settings  (no sidebar pages)
 ```
+
+**Adding a new tab page:** update `TAB_PAGES`, `PAGE_TO_SIDEBAR`, the `render()` dispatch in `app.js`, and add any needed CSS to `index.html`.
+
+### State Layer (`src/state.js`)
+Central pub/sub store. Rules:
+- Components **never write to localStorage directly** — call state functions instead.
+- Every mutating function calls `saveData(_data, _profileId)` (async POST) and `notify()` (re-render).
+- **Exception — retirement inputs** use a two-tier persistence strategy (see below).
+
+Key exports:
+```js
+initState(data, profileId)      // called by app.js after async load
+subscribe(fn)                   // returns unsubscribe fn
+getAccounts() / getAccount(id)
+addAccount / updateAccount / deleteAccount
+addHolding / updateHolding / deleteHolding
+addTransaction / updateTransaction / deleteTransaction
+addCategory / updateCategory / deleteCategory
+addPayee / updatePayee / deletePayee
+recordAccountValue(accountId, date, value)
+getRetirementInputs()
+saveRetirementInputs(inputs)    // updates _data + localStorage + async POST
+flushRetirementInputs(inputs)   // localStorage only — safe on every keystroke
+getRetirementInputsFromStorage(profileId?)
+```
+
+### Persistence Layers
+| Layer | Key | When written |
+|-------|-----|-------------|
+| Server JSON file | `/api/data?profile=<id>` | Every mutation via `saveData()` async POST |
+| localStorage (retirement inputs) | `financetracker_ret_<profileId>` | Every keystroke via `flushRetirementInputs` |
+| API keys | `financetracker_apikey`, `financetracker_avkey` | Settings save |
+| Active profile | `financetracker_active_profile` | Profile switch |
+
+**Retirement input load order** (in `retirementView.js → ensureLoaded()`):
+1. Read `localStorage` first (always freshest — written on every keystroke)
+2. Fall back to server data only if localStorage is empty
+3. `beforeunload` handler writes one final sync flush
+
+### Service Layer (`src/services/`)
+| File | Purpose |
+|------|---------|
+| `storage.js` | REST calls to `server.py` (`/api/profiles`, `/api/data`) and localStorage helpers |
+| `finnhub.js` | Fetches quotes from `api.finnhub.io` using `window.__FINNHUB_API_KEY__` |
+| `alphavantage.js` | Fallback for mutual funds (e.g. FXAIX) using `window.__AV_API_KEY__` |
+| `prices.js` | Orchestrates Finnhub → Alpha Vantage fallback; returns `{ prices, quoteDetails, needsManualEntry }` |
+
+**Price state** is local to `app.js` (not in `state.js`): `prices`, `quoteDetails`, `pricesLoading`, `pricesError`. Prices are never fetched for retirement or reports tabs.
+
+### Component Conventions
+- Components are **plain functions**: `renderFoo(container, ...props)` — they set `container.innerHTML` or use `appendChild`.
+- **Modal** (`src/components/ui/modal.js`): singleton, `Modal.open(el)` / `Modal.close()`.
+- Forms open inside Modal; on submit they call state functions then `Modal.close()`.
+- CSS lives entirely in `index.html`'s `<style>` block — add new classes there.
+- **AbortController / signal pattern**: event listeners that need cleanup accept a `{ signal }` option to auto-remove on navigation.
+
+### Avoiding the Slider/Focus Destruction Bug
+When a UI control (slider, input) triggers a re-render, **never wipe the element's own container**. Instead:
+- Build the control once in the outer render function
+- Create a separate `resultsDiv` below it
+- Re-render only `resultsDiv` on change events
+
+This preserves focus so keyboard input (arrow keys, typing) keeps working after the first interaction. See `historicSimulationView.js` for the canonical example.
+
+---
+
+## Data Models
+
+### Account
+```js
+{
+  id: string,
+  name: string,
+  taxType: "taxable" | "tax-free" | "tax-deferred",
+  accountType: "asset" | "ledger",
+  openingBalance: number,       // ledger accounts only
+  createdAt: ISO string,
+  holdings: Holding[],          // asset accounts
+  transactions: Transaction[],  // ledger accounts
+  valueHistory: { date, value }[],
+}
+```
+
+### Holding
+```js
+{
+  id: string,
+  symbol: string,
+  shares: number,
+  origin: "domestic" | "international",
+  assetType: "stock-fund" | "real-estate" | "company" | "crypto" | "bonds" | "cash",
+}
+```
+- `cash` holdings: price is always $1/share, symbol is a display label, skipped by price APIs.
+- Mutual funds (e.g. FXAIX): fetched via Alpha Vantage since Finnhub doesn't support them.
+
+### Transaction (ledger accounts)
+```js
+{
+  id: string,
+  date: ISO string,
+  amount: number,  // positive = income, negative = expense
+  payee: string,
+  categoryId: string,
+  subcategory: string,
+  note: string,
+}
+```
+
+### Retirement Inputs (`_s` in `retirementView.js`)
+```js
+{
+  currentAge: number,
+  annualExpenses: number,
+  mortgagePmt: number,       // nominal, not inflation-adjusted
+  mortgageYears: number,     // years remaining; pmt added to withdrawal for first N years
+  taxable: number,
+  taxFree: number,
+  taxDeferred: number,
+  cashYears: number,
+  nominalGrowth: number,     // % assumed annual return (Simple Simulation)
+  inflation: number,         // % assumed inflation (Simple Simulation)
+  taxRate: number,
+  lumpSums: [{ age, amount }],
+  annuities: [{ startAge, amount }],
+  glidePath: {
+    startPct: number,        // % in stocks at retirement
+    endPct: number,          // % in stocks at end of transition
+    transitionYears: number,
+    stockColumn: string,     // key into HISTORIC_DATA row (e.g. "sp500")
+    bondColumn: string,
+    altColumn: string,
+    altPct: number,
+  },
+}
+```
+
+---
+
+## Retirement Tab — Key Files
+
+| File | Purpose |
+|------|---------|
+| `retirementView.js` | Inputs form + Simple Simulation render; exports `getSimInputs()` |
+| `historicSimulationView.js` | Historic Simulation tab; year slider + stacked area chart + outcome pie |
+| `historicReturnsView.js` | Historic Returns table (read-only reference data) |
+| `historicData.js` | Shared data module: `HISTORIC_DATA`, `COLUMNS`, `ASSET_TYPE_TO_COLUMN`, `FIRST_YEAR` (1928), `LAST_YEAR` (2025) |
+
+### Historic Simulation Logic
+- `runHistoricSimulation(s, startYear)` — runs year-by-year using actual `HISTORIC_DATA` returns and CPI; all values deflated to start-year dollars.
+- Glide path: `t = min(yi / transitionYears, 1)`, `alloc = startPct + (endPct - startPct) * t`
+- `categorizeAllSimulations(s)` — iterates all qualifying start years (`FIRST_YEAR` to `LAST_YEAR - (95 - currentAge)`), returns `{ insufficient, sufficient, excess, total }`.
+- Outcome thresholds: Insufficient = depleted before 95; Sufficient = 0–150% of original portfolio at 95 in start-year dollars; Excess = >150%.
+
+### `ASSET_TYPE_TO_COLUMN` mapping
+```js
+"stock-fund"  → "sp500"
+"company"     → "sp500"
+"crypto"      → "sp500"
+"bonds"       → "corpBond"
+"real-estate" → "realEstate"
+"cash"        → "tBill"
+```
+
+---
+
+## CSS Conventions
+
+All styles are in `index.html`'s `<style>` block. Key namespaces:
+- `.ret-*` — retirement tab shared styles (cards, headlines, charts, legends)
+- `.hsim-*` — historic simulation specific (slider, top-row layout, pie chart)
+- `.hist-*` — historic returns table
+- `.report-*` — reports tab
+
+When adding a new page, add its CSS in `index.html` alongside a comment marking the section.
+
+---
+
+## API Keys
+
+Stored in `localStorage`, never in code:
+- Finnhub: `window.__FINNHUB_API_KEY__` (required for live prices)
+- Alpha Vantage: `window.__AV_API_KEY__` (optional, mutual funds fallback)
+
+---
+
+## Profiles
+
+Multiple named profiles are supported. Each profile has its own server-side JSON data file. The active profile ID is stored in `localStorage["financetracker_active_profile"]`. Retirement inputs are stored per-profile in `localStorage["financetracker_ret_<profileId>"]`.
