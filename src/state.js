@@ -3,8 +3,10 @@ import { generateId } from "./utils/uuid.js";
 
 // Central reactive state — initialized by app.js via initState() after async load
 let _data = { accounts: [], categories: [], payees: [] };
+let _profileId = null;  // set by initState; passed to saveData on every mutation
 
-export function initState(data) {
+export function initState(data, profileId) {
+  _profileId = profileId;
   _data = {
     accounts:   Array.isArray(data?.accounts)   ? data.accounts   : [],
     categories: Array.isArray(data?.categories) ? data.categories : [],
@@ -49,7 +51,7 @@ export function addAccount(name, taxType, accountType = "asset", openingBalance 
     valueHistory: [],
   };
   _data = { ..._data, accounts: [..._data.accounts, account] };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
   return account;
 }
@@ -61,13 +63,13 @@ export function updateAccount(id, name, taxType, accountType = "asset", openingB
       a.id === id ? { ...a, name: name.trim(), taxType, accountType, openingBalance: parseFloat(openingBalance) || 0 } : a
     ),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
 export function deleteAccount(id) {
   _data = { ..._data, accounts: _data.accounts.filter((a) => a.id !== id) };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
@@ -91,7 +93,7 @@ export function recordAccountValue(accountId, date, value) {
       return { ...a, valueHistory: newHistory };
     }),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
 }
 
 export function getAccountValueHistory(accountId) {
@@ -116,7 +118,7 @@ export function addHolding(accountId, symbol, shares, origin, assetType) {
         : a
     ),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
   return holding;
 }
@@ -138,7 +140,7 @@ export function updateHolding(accountId, holdingId, symbol, shares, origin, asse
       };
     }),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
@@ -150,7 +152,7 @@ export function deleteHolding(accountId, holdingId) {
       return { ...a, holdings: a.holdings.filter((h) => h.id !== holdingId) };
     }),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
@@ -180,7 +182,7 @@ export function addTransaction(accountId, { date, payeeName, subcategoryId, tag,
         : a
     ),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
   return tx;
 }
@@ -217,7 +219,7 @@ export function updateTransaction(accountId, txId, { date, payeeName, subcategor
       };
     }),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
@@ -247,7 +249,7 @@ export function addTransactionsBatch(accountId, txDataArray) {
         : a
     ),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
   return newTxs;
 }
@@ -260,7 +262,7 @@ export function deleteTransaction(accountId, txId) {
       return { ...a, transactions: (a.transactions || []).filter((t) => t.id !== txId) };
     }),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
@@ -275,7 +277,7 @@ export function getCategories() {
 export function addCategory(name) {
   const category = { id: generateId(), name: name.trim(), subcategories: [] };
   _data = { ..._data, categories: [..._data.categories, category] };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
   return category;
 }
@@ -287,7 +289,7 @@ export function updateCategory(id, name) {
       c.id === id ? { ...c, name: name.trim() } : c
     ),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
@@ -304,7 +306,7 @@ export function deleteCategory(id) {
     categories: _data.categories.filter((c) => c.id !== id),
     payees: newPayees,
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
@@ -318,7 +320,7 @@ export function addSubcategory(categoryId, name) {
         : c
     ),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
   return sub;
 }
@@ -336,7 +338,7 @@ export function updateSubcategory(categoryId, subcategoryId, name) {
       };
     }),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
@@ -351,7 +353,7 @@ export function deleteSubcategory(categoryId, subcategoryId) {
     }),
     payees: newPayees,
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
@@ -384,7 +386,7 @@ export function addPayee(name, subcategoryId) {
     ...(categoryId   ? { categoryId }   : {}),
   };
   _data = { ..._data, payees: [..._data.payees, payee] };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
   return payee;
 }
@@ -414,12 +416,12 @@ export function updatePayee(id, name, subcategoryId) {
       return updated;
     }),
   };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }
 
 export function deletePayee(id) {
   _data = { ..._data, payees: _data.payees.filter((p) => p.id !== id) };
-  saveData(_data);
+  saveData(_data, _profileId);
   notify();
 }

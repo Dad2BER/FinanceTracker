@@ -3,8 +3,9 @@ import json
 import os
 import sqlite3
 import sys
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 # Accept --db <path> so the preview server (which runs from the worktree
 # directory) can be pointed at the main repo's database:
@@ -35,6 +36,11 @@ def init_db():
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA foreign_keys=ON")
     con.executescript("""
+        CREATE TABLE IF NOT EXISTS profiles (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS accounts (
             id              TEXT PRIMARY KEY,
             name            TEXT NOT NULL,
@@ -77,25 +83,67 @@ def init_db():
         );
     """)
     con.commit()
-    # Migrate: add opening_balance to existing databases that predate this column
+
+    # ── Column migrations ──────────────────────────────────────────────────────
+    # Add opening_balance to existing databases that predate this column
     try:
         con.execute("ALTER TABLE accounts ADD COLUMN opening_balance REAL NOT NULL DEFAULT 0")
         con.commit()
     except sqlite3.OperationalError:
         pass  # Column already exists
-    # Migrate: rename account_type 'liability' → 'ledger'
+
+    # Add profile_id to accounts
+    try:
+        con.execute("ALTER TABLE accounts ADD COLUMN profile_id TEXT REFERENCES profiles(id)")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    # Add profile_id to categories
+    try:
+        con.execute("ALTER TABLE categories ADD COLUMN profile_id TEXT REFERENCES profiles(id)")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    # Add profile_id to payees
+    try:
+        con.execute("ALTER TABLE payees ADD COLUMN profile_id TEXT REFERENCES profiles(id)")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    # ── Data migrations ────────────────────────────────────────────────────────
+    # Rename account_type 'liability' → 'ledger'
     con.execute("UPDATE accounts SET account_type = 'ledger' WHERE account_type = 'liability'")
     con.commit()
+
+    # If no profiles exist, create a default "My Accounts" profile and assign
+    # all existing data (accounts, categories, payees) to it.
+    count = con.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
+    if count == 0:
+        default_id = str(uuid.uuid4())
+        now = datetime.datetime.utcnow().isoformat()
+        con.execute(
+            "INSERT INTO profiles (id, name, created_at) VALUES (?, ?, ?)",
+            (default_id, "My Accounts", now)
+        )
+        con.execute("UPDATE accounts   SET profile_id = ? WHERE profile_id IS NULL", (default_id,))
+        con.execute("UPDATE categories SET profile_id = ? WHERE profile_id IS NULL", (default_id,))
+        con.execute("UPDATE payees     SET profile_id = ? WHERE profile_id IS NULL", (default_id,))
+        con.commit()
+
     con.close()
 
 
-def load_state():
+def load_state(profile_id):
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
 
     # ── Accounts + Holdings + Transactions ────────────────────────────────────
     accounts_rows = con.execute(
-        "SELECT * FROM accounts ORDER BY created_at"
+        "SELECT * FROM accounts WHERE profile_id = ? ORDER BY created_at",
+        (profile_id,)
     ).fetchall()
 
     accounts = []
@@ -154,7 +202,10 @@ def load_state():
         })
 
     # ── Categories + Subcategories ────────────────────────────────────────────
-    cat_rows = con.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    cat_rows = con.execute(
+        "SELECT * FROM categories WHERE profile_id = ? ORDER BY name",
+        (profile_id,)
+    ).fetchall()
     categories = []
     for c in cat_rows:
         sub_rows = con.execute(
@@ -172,7 +223,9 @@ def load_state():
         "SELECT p.*, s.category_id "
         "FROM payees p "
         "LEFT JOIN subcategories s ON s.id = p.subcategory_id "
-        "ORDER BY p.name"
+        "WHERE p.profile_id = ? "
+        "ORDER BY p.name",
+        (profile_id,)
     ).fetchall()
     payees = []
     for p in payee_rows:
@@ -187,28 +240,43 @@ def load_state():
     return {"accounts": accounts, "categories": categories, "payees": payees}
 
 
-def save_state(data):
-    accounts    = data.get("accounts",   [])
-    categories  = data.get("categories", [])
-    payees      = data.get("payees",     [])
+def save_state(data, profile_id):
+    accounts   = data.get("accounts",   [])
+    categories = data.get("categories", [])
+    payees     = data.get("payees",     [])
 
     con = sqlite3.connect(DB_PATH)
     con.execute("PRAGMA foreign_keys=ON")
     try:
         with con:
-            # ── Delete in FK-safe order ────────────────────────────────────
-            con.execute("DELETE FROM transactions")
-            con.execute("DELETE FROM payees")
-            con.execute("DELETE FROM subcategories")
-            con.execute("DELETE FROM categories")
-            con.execute("DELETE FROM holdings")
-            con.execute("DELETE FROM accounts")
+            # ── Delete this profile's data in FK-safe order ────────────────────
+            account_ids = [
+                row[0] for row in
+                con.execute("SELECT id FROM accounts WHERE profile_id = ?", (profile_id,)).fetchall()
+            ]
+            if account_ids:
+                ph = ",".join("?" * len(account_ids))
+                con.execute(f"DELETE FROM transactions WHERE account_id IN ({ph})", account_ids)
+                con.execute(f"DELETE FROM holdings    WHERE account_id IN ({ph})", account_ids)
 
-            # ── Categories + Subcategories (must come before transactions) ─
+            con.execute("DELETE FROM payees WHERE profile_id = ?", (profile_id,))
+
+            cat_ids = [
+                row[0] for row in
+                con.execute("SELECT id FROM categories WHERE profile_id = ?", (profile_id,)).fetchall()
+            ]
+            if cat_ids:
+                ph = ",".join("?" * len(cat_ids))
+                con.execute(f"DELETE FROM subcategories WHERE category_id IN ({ph})", cat_ids)
+
+            con.execute("DELETE FROM categories WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM accounts   WHERE profile_id = ?", (profile_id,))
+
+            # ── Categories + Subcategories ─────────────────────────────────────
             for cat in categories:
                 con.execute(
-                    "INSERT INTO categories (id, name) VALUES (?, ?)",
-                    (cat["id"], cat["name"])
+                    "INSERT INTO categories (id, name, profile_id) VALUES (?, ?, ?)",
+                    (cat["id"], cat["name"], profile_id)
                 )
                 for sub in cat.get("subcategories", []):
                     con.execute(
@@ -216,18 +284,19 @@ def save_state(data):
                         (sub["id"], cat["id"], sub["name"])
                     )
 
-            # ── Payees (after subcategories) ───────────────────────────────
+            # ── Payees ─────────────────────────────────────────────────────────
             for p in payees:
                 con.execute(
-                    "INSERT INTO payees (id, name, subcategory_id) VALUES (?, ?, ?)",
-                    (p["id"], p["name"], p.get("subcategoryId"))
+                    "INSERT INTO payees (id, name, subcategory_id, profile_id) VALUES (?, ?, ?, ?)",
+                    (p["id"], p["name"], p.get("subcategoryId"), profile_id)
                 )
 
-            # ── Accounts + Holdings + Transactions ─────────────────────────
+            # ── Accounts + Holdings + Transactions ─────────────────────────────
             for acc in accounts:
                 con.execute(
-                    "INSERT INTO accounts (id, name, tax_type, account_type, opening_balance, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO accounts "
+                    "(id, name, tax_type, account_type, opening_balance, created_at, profile_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (
                         acc["id"],
                         acc["name"],
@@ -235,6 +304,7 @@ def save_state(data):
                         acc.get("accountType", "asset"),
                         acc.get("openingBalance", 0),
                         acc["createdAt"],
+                        profile_id,
                     )
                 )
                 for idx, h in enumerate(acc.get("holdings", [])):
@@ -271,47 +341,201 @@ def save_state(data):
         con.close()
 
 
+# ── Profile Management ─────────────────────────────────────────────────────────
+
+def get_profiles():
+    con = sqlite3.connect(DB_PATH)
+    con.row_factory = sqlite3.Row
+    rows = con.execute("SELECT * FROM profiles ORDER BY created_at").fetchall()
+    con.close()
+    return [{"id": r["id"], "name": r["name"], "createdAt": r["created_at"]} for r in rows]
+
+
+def create_profile(name):
+    profile_id = str(uuid.uuid4())
+    now = datetime.datetime.utcnow().isoformat()
+    con = sqlite3.connect(DB_PATH)
+    try:
+        with con:
+            con.execute(
+                "INSERT INTO profiles (id, name, created_at) VALUES (?, ?, ?)",
+                (profile_id, name.strip(), now)
+            )
+    finally:
+        con.close()
+    return {"id": profile_id, "name": name.strip(), "createdAt": now}
+
+
+def rename_profile(profile_id, name):
+    con = sqlite3.connect(DB_PATH)
+    try:
+        with con:
+            con.execute("UPDATE profiles SET name = ? WHERE id = ?", (name.strip(), profile_id))
+    finally:
+        con.close()
+    return {"id": profile_id, "name": name.strip()}
+
+
+def delete_profile(profile_id):
+    con = sqlite3.connect(DB_PATH)
+    con.execute("PRAGMA foreign_keys=ON")
+    try:
+        with con:
+            account_ids = [
+                row[0] for row in
+                con.execute("SELECT id FROM accounts WHERE profile_id = ?", (profile_id,)).fetchall()
+            ]
+            if account_ids:
+                ph = ",".join("?" * len(account_ids))
+                con.execute(f"DELETE FROM transactions WHERE account_id IN ({ph})", account_ids)
+                con.execute(f"DELETE FROM holdings    WHERE account_id IN ({ph})", account_ids)
+
+            con.execute("DELETE FROM payees WHERE profile_id = ?", (profile_id,))
+
+            cat_ids = [
+                row[0] for row in
+                con.execute("SELECT id FROM categories WHERE profile_id = ?", (profile_id,)).fetchall()
+            ]
+            if cat_ids:
+                ph = ",".join("?" * len(cat_ids))
+                con.execute(f"DELETE FROM subcategories WHERE category_id IN ({ph})", cat_ids)
+
+            con.execute("DELETE FROM categories WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM accounts   WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM profiles   WHERE id = ?", (profile_id,))
+    finally:
+        con.close()
+
+
 # ── HTTP Handler ───────────────────────────────────────────────────────────────
 
 class FinanceHandler(BaseHTTPRequestHandler):
 
+    def _parse_path(self):
+        parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+        return parsed.path, {k: v[0] for k, v in qs.items()}
+
     def do_GET(self):
-        path = urlparse(self.path).path
+        path, params = self._parse_path()
         if path == "/api/data":
-            self._handle_get_data()
+            self._handle_get_data(params.get("profile"))
+        elif path == "/api/profiles":
+            self._handle_get_profiles()
         elif path == "/api/backup":
             self._handle_get_backup()
         else:
             self._serve_static(path)
 
     def do_POST(self):
-        path = urlparse(self.path).path
+        path, params = self._parse_path()
         if path == "/api/data":
-            self._handle_post_data()
+            self._handle_post_data(params.get("profile"))
+        elif path == "/api/profiles":
+            self._handle_post_profiles()
         elif path == "/api/restore":
             self._handle_post_restore()
         else:
             self._respond(404, "application/json", b'{"error":"not found"}')
 
-    def _handle_get_data(self):
+    def do_PUT(self):
+        path, _ = self._parse_path()
+        parts = [p for p in path.split("/") if p]  # ["api", "profiles", "<id>"]
+        if len(parts) == 3 and parts[0] == "api" and parts[1] == "profiles":
+            self._handle_put_profile(parts[2])
+        else:
+            self._respond(404, "application/json", b'{"error":"not found"}')
+
+    def do_DELETE(self):
+        path, _ = self._parse_path()
+        parts = [p for p in path.split("/") if p]
+        if len(parts) == 3 and parts[0] == "api" and parts[1] == "profiles":
+            self._handle_delete_profile(parts[2])
+        else:
+            self._respond(404, "application/json", b'{"error":"not found"}')
+
+    def _handle_get_data(self, profile_id):
+        if not profile_id:
+            body = json.dumps({"error": "profile parameter required"}).encode("utf-8")
+            self._respond(400, "application/json; charset=utf-8", body)
+            return
         try:
-            state = load_state()
+            state = load_state(profile_id)
             body = json.dumps(state).encode("utf-8")
             self._respond(200, "application/json; charset=utf-8", body)
         except Exception as e:
             body = json.dumps({"error": str(e)}).encode("utf-8")
             self._respond(500, "application/json; charset=utf-8", body)
 
-    def _handle_post_data(self):
+    def _handle_post_data(self, profile_id):
+        if not profile_id:
+            body = json.dumps({"error": "profile parameter required"}).encode("utf-8")
+            self._respond(400, "application/json; charset=utf-8", body)
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length)
             data = json.loads(raw)
-            save_state(data)
+            save_state(data, profile_id)
             self._respond(200, "application/json; charset=utf-8", b'{"ok":true}')
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             body = json.dumps({"error": str(e)}).encode("utf-8")
             self._respond(400, "application/json; charset=utf-8", body)
+        except Exception as e:
+            body = json.dumps({"error": str(e)}).encode("utf-8")
+            self._respond(500, "application/json; charset=utf-8", body)
+
+    def _handle_get_profiles(self):
+        try:
+            body = json.dumps(get_profiles()).encode("utf-8")
+            self._respond(200, "application/json; charset=utf-8", body)
+        except Exception as e:
+            body = json.dumps({"error": str(e)}).encode("utf-8")
+            self._respond(500, "application/json; charset=utf-8", body)
+
+    def _handle_post_profiles(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length)
+            data = json.loads(raw)
+            name = data.get("name", "").strip()
+            if not name:
+                self._respond(400, "application/json; charset=utf-8",
+                              b'{"error":"name is required"}')
+                return
+            profile = create_profile(name)
+            body = json.dumps(profile).encode("utf-8")
+            self._respond(200, "application/json; charset=utf-8", body)
+        except Exception as e:
+            body = json.dumps({"error": str(e)}).encode("utf-8")
+            self._respond(500, "application/json; charset=utf-8", body)
+
+    def _handle_put_profile(self, profile_id):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length)
+            data = json.loads(raw)
+            name = data.get("name", "").strip()
+            if not name:
+                self._respond(400, "application/json; charset=utf-8",
+                              b'{"error":"name is required"}')
+                return
+            profile = rename_profile(profile_id, name)
+            body = json.dumps(profile).encode("utf-8")
+            self._respond(200, "application/json; charset=utf-8", body)
+        except Exception as e:
+            body = json.dumps({"error": str(e)}).encode("utf-8")
+            self._respond(500, "application/json; charset=utf-8", body)
+
+    def _handle_delete_profile(self, profile_id):
+        try:
+            all_profiles = get_profiles()
+            if len(all_profiles) <= 1:
+                body = json.dumps({"error": "Cannot delete the last profile."}).encode("utf-8")
+                self._respond(400, "application/json; charset=utf-8", body)
+                return
+            delete_profile(profile_id)
+            self._respond(200, "application/json; charset=utf-8", b'{"ok":true}')
         except Exception as e:
             body = json.dumps({"error": str(e)}).encode("utf-8")
             self._respond(500, "application/json; charset=utf-8", body)
