@@ -12,6 +12,7 @@ const MAX_PAYEES_FOR_STACK = 10;
 let _subcatMode      = "ytd"; // "ytd" | "last12"
 let _selectedCatId   = null;
 let _selectedSubId   = null;
+let _collapsedMonths = new Set(); // YYYY-MM keys of collapsed month sections
 
 // ── Tiny helpers (mirrors reportsView.js) ─────────────────────────────────────
 function monthLabel(yyyyMM) {
@@ -198,6 +199,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   // ── Collect transactions ─────────────────────────────────────────────────────
   const ledgers = accounts.filter(a => a.accountType === "ledger");
   const txs = [];
+  const rawTxs = [];
   ledgers.forEach(acct => {
     (acct.transactions || []).forEach(tx => {
       if (tx.excluded) return;
@@ -213,8 +215,17 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
         ? (subcatNameMap.get(tx.subcategoryId) || "Uncategorized")
         : normaliseName(tx.payeeName);
       txs.push({ month, amount: Math.abs(tx.amount), label });
+      rawTxs.push({
+        account:     acct.name,
+        payee:       normaliseName(tx.payeeName || tx.payee || ""),
+        date:        tx.date || "",
+        category:    selCat?.name || "",
+        subcategory: subcatNameMap.get(tx.subcategoryId) || "Uncategorized",
+        amount:      Math.abs(tx.amount),
+      });
     });
   });
+  rawTxs.sort((a, b) => b.date.localeCompare(a.date));
 
   if (txs.length === 0) {
     const el = document.createElement("div");
@@ -496,4 +507,86 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     note.textContent = `${allLabels.length} payees — bars show monthly totals only (breakdown shown when 10 or fewer payees).`;
     section.appendChild(note);
   }
+
+  // ── Transaction Table ──────────────────────────────────────────────────────
+  const tableSection = document.createElement("div");
+  tableSection.className = "report-section subcat-tx-table-section";
+
+  const tableTitle = document.createElement("h3");
+  tableTitle.className = "subcat-tx-table-title";
+  tableTitle.textContent = "Transactions";
+  tableSection.appendChild(tableTitle);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "subcat-tx-table-wrap";
+
+  const table = document.createElement("table");
+  table.className = "subcat-tx-table";
+  table.innerHTML = `<thead><tr>
+    <th>Account</th><th>Date</th><th>Payee</th>
+    <th>Category</th><th>Subcategory</th><th class="subcat-tx-amt">Amount</th>
+  </tr></thead>`;
+
+  // Group rows by month (YYYY-MM), months descending
+  const monthGroups = new Map();
+  rawTxs.forEach(row => {
+    const mo = row.date.slice(0, 7);
+    if (!monthGroups.has(mo)) monthGroups.set(mo, []);
+    monthGroups.get(mo).push(row);
+  });
+  const sortedMonths = [...monthGroups.keys()].sort((a, b) => b.localeCompare(a));
+
+  sortedMonths.forEach(mo => {
+    const rows      = monthGroups.get(mo);
+    const moTotal   = rows.reduce((s, r) => s + r.amount, 0);
+    const collapsed = _collapsedMonths.has(mo);
+    const [y, m]    = mo.split("-");
+    const moLabel   = new Date(+y, +m - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+
+    // Month header row
+    const tbodyHead = document.createElement("tbody");
+    const headTr    = document.createElement("tr");
+    headTr.className = "subcat-tx-month-head";
+    headTr.innerHTML = `
+      <td colspan="5">
+        <span class="subcat-tx-chevron">${collapsed ? "▶" : "▼"}</span>
+        ${moLabel}
+      </td>
+      <td class="subcat-tx-amt">${formatCurrency(moTotal)}</td>
+    `;
+    headTr.addEventListener("click", () => {
+      if (_collapsedMonths.has(mo)) {
+        _collapsedMonths.delete(mo);
+        tbodyRows.style.display = "";
+        headTr.querySelector(".subcat-tx-chevron").textContent = "▼";
+      } else {
+        _collapsedMonths.add(mo);
+        tbodyRows.style.display = "none";
+        headTr.querySelector(".subcat-tx-chevron").textContent = "▶";
+      }
+    });
+    tbodyHead.appendChild(headTr);
+    table.appendChild(tbodyHead);
+
+    // Month data rows
+    const tbodyRows = document.createElement("tbody");
+    if (collapsed) tbodyRows.style.display = "none";
+    rows.forEach(row => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${row.account}</td>
+        <td>${row.date.slice(0, 10)}</td>
+        <td>${row.payee}</td>
+        <td>${row.category}</td>
+        <td>${row.subcategory}</td>
+        <td class="subcat-tx-amt">${formatCurrency(row.amount)}</td>
+      `;
+      tbodyRows.appendChild(tr);
+    });
+    table.appendChild(tbodyRows);
+  });
+
+  tableWrap.appendChild(table);
+  tableSection.appendChild(tableWrap);
+  container.appendChild(tableSection);
 }

@@ -138,14 +138,15 @@ export function getAccountValueHistory(accountId) {
 
 // ── Holding CRUD ──────────────────────────────────────────────────────────────
 
-export function addHolding(accountId, symbol, shares, origin, assetType, dividendRate) {
+export function addHolding(accountId, symbol, shares, origin, assetType, dividendPerShare, dividendReinvested) {
   const holding = {
     id: generateId(),
     symbol: symbol.trim().toUpperCase(),
     shares: parseFloat(shares),
     ...(origin ? { origin } : {}),
     ...(assetType ? { assetType } : {}),
-    ...(dividendRate != null && dividendRate !== '' ? { dividendRate: parseFloat(dividendRate) } : {}),
+    ...(dividendPerShare != null && dividendPerShare !== '' ? { dividendPerShare: parseFloat(dividendPerShare) } : {}),
+    ...(dividendReinvested ? { dividendReinvested: true } : {}),
   };
   _data = {
     ..._data,
@@ -160,7 +161,7 @@ export function addHolding(accountId, symbol, shares, origin, assetType, dividen
   return holding;
 }
 
-export function updateHolding(accountId, holdingId, symbol, shares, origin, assetType, dividendRate) {
+export function updateHolding(accountId, holdingId, symbol, shares, origin, assetType, dividendPerShare, dividendReinvested) {
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) => {
@@ -172,8 +173,9 @@ export function updateHolding(accountId, holdingId, symbol, shares, origin, asse
           const updated = { ...h, symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) };
           if (origin) updated.origin = origin; else delete updated.origin;
           if (assetType) updated.assetType = assetType; else delete updated.assetType;
-          if (dividendRate != null && dividendRate !== '') updated.dividendRate = parseFloat(dividendRate);
-          else delete updated.dividendRate;
+          if (dividendPerShare != null && dividendPerShare !== '') updated.dividendPerShare = parseFloat(dividendPerShare);
+          else delete updated.dividendPerShare;
+          if (dividendReinvested) updated.dividendReinvested = true; else delete updated.dividendReinvested;
           return updated;
         }),
       };
@@ -183,7 +185,7 @@ export function updateHolding(accountId, holdingId, symbol, shares, origin, asse
   notify();
 }
 
-export function updateHoldingDividend(accountId, holdingId, dividendRate) {
+export function updateHoldingDividend(accountId, holdingId, dividendPerShare) {
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) => {
@@ -192,10 +194,27 @@ export function updateHoldingDividend(accountId, holdingId, dividendRate) {
         ...a,
         holdings: a.holdings.map((h) => {
           if (h.id !== holdingId) return h;
-          return { ...h, dividendRate };
+          return { ...h, dividendPerShare };
         }),
       };
     }),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
+export function updateDividendBySymbol(symbol, dividendPerShare, dividendReinvested) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) => ({
+      ...a,
+      holdings: a.holdings.map((h) => {
+        if (h.symbol !== symbol) return h;
+        const updated = { ...h, dividendPerShare };
+        if (dividendReinvested) updated.dividendReinvested = true; else delete updated.dividendReinvested;
+        return updated;
+      }),
+    })),
   };
   saveData(_data, _profileId);
   notify();

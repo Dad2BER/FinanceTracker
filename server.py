@@ -50,13 +50,16 @@ def init_db():
             created_at      TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS holdings (
-            id          TEXT PRIMARY KEY,
-            account_id  TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-            symbol      TEXT NOT NULL,
-            shares      REAL NOT NULL,
-            origin      TEXT,
-            asset_type  TEXT,
-            sort_order  INTEGER NOT NULL DEFAULT 0
+            id                   TEXT PRIMARY KEY,
+            account_id           TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            symbol               TEXT NOT NULL,
+            shares               REAL NOT NULL,
+            origin               TEXT,
+            asset_type           TEXT,
+            sort_order           INTEGER NOT NULL DEFAULT 0,
+            dividend_rate        REAL,
+            dividend_per_share   REAL,
+            dividend_reinvested  INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS categories (
             id   TEXT PRIMARY KEY,
@@ -132,6 +135,25 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Add dividend_rate to holdings (legacy — superseded by dividend_per_share)
+    try:
+        con.execute("ALTER TABLE holdings ADD COLUMN dividend_rate REAL")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    # Add dividend_per_share and dividend_reinvested to holdings
+    try:
+        con.execute("ALTER TABLE holdings ADD COLUMN dividend_per_share REAL")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        con.execute("ALTER TABLE holdings ADD COLUMN dividend_reinvested INTEGER NOT NULL DEFAULT 0")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass
+
     # ── Data migrations ────────────────────────────────────────────────────────
     # Rename account_type 'liability' → 'ledger'
     con.execute("UPDATE accounts SET account_type = 'ledger' WHERE account_type = 'liability'")
@@ -183,6 +205,10 @@ def load_state(profile_id):
                 holding["origin"] = h["origin"]
             if h["asset_type"]:
                 holding["assetType"] = h["asset_type"]
+            if h["dividend_per_share"] is not None:
+                holding["dividendPerShare"] = h["dividend_per_share"]
+            if h["dividend_reinvested"]:
+                holding["dividendReinvested"] = True
             holdings.append(holding)
 
         tx_rows = con.execute(
@@ -355,8 +381,8 @@ def save_state(data, profile_id):
                 for idx, h in enumerate(acc.get("holdings", [])):
                     con.execute(
                         "INSERT INTO holdings "
-                        "(id, account_id, symbol, shares, origin, asset_type, sort_order) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "(id, account_id, symbol, shares, origin, asset_type, sort_order, dividend_per_share, dividend_reinvested) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             h["id"],
                             acc["id"],
@@ -365,6 +391,8 @@ def save_state(data, profile_id):
                             h.get("origin"),
                             h.get("assetType"),
                             idx,
+                            h.get("dividendPerShare"),
+                            1 if h.get("dividendReinvested") else 0,
                         )
                     )
                 for t in acc.get("transactions", []):

@@ -49,12 +49,17 @@ export function createHoldingRow(accountId, holding, prices, quoteDetails, price
   const typeCell = holding.assetType
     ? `<td>${TYPE_LABELS[holding.assetType] ?? escHtml(holding.assetType)}</td>`
     : `<td><span class="dim">—</span></td>`;
-  const dr = (!isCash && holding.dividendRate != null && holding.dividendRate > 0)
-    ? holding.dividendRate
-    : null;
-  const dividendCell = dr !== null
-    ? `<td class="align-right">${dr.toFixed(2)}%</td>`
-    : `<td class="align-right dim">—</td>`;
+  const dps = (holding.dividendPerShare != null && holding.dividendPerShare > 0)
+    ? holding.dividendPerShare : null;
+  let dividendCell;
+  if (dps !== null) {
+    const pricePaid = isCash ? 1 : price;
+    const yieldPct = pricePaid ? (dps / pricePaid * 100).toFixed(2) + "%" : `$${dps.toFixed(4)}/sh`;
+    const dripBadge = holding.dividendReinvested ? ` <span class="drip-badge">DRIP</span>` : "";
+    dividendCell = `<td class="align-right">${yieldPct}${dripBadge}</td>`;
+  } else {
+    dividendCell = `<td class="align-right dim">—</td>`;
+  }
 
   // Symbol cell: clickable for non-cash (opens stock info popup), plain for cash
   const symbolCellHtml = isCash

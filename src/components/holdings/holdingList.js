@@ -92,28 +92,25 @@ export function renderHoldingList(
       if (hasAny) totalDayChange = sum;
     }
 
-    // Est. Annual Income: sum of shares × price × dividendRate/100 for holdings with known rate and price
-    let annualIncome = null;
-    if (!pricesLoading && prices !== null) {
-      let incomeSum = 0;
-      let hasIncome = false;
+    // Est. Annual Income: cash (non-reinvested) + DRIP (reinvested) totals
+    let annualIncome = null, dripIncome = null;
+    {
+      let cashSum = 0, hasCash = false, dripSum = 0, hasDrip = false;
       account.holdings.forEach((h) => {
-        if (!h.dividendRate || h.dividendRate <= 0) return;
-        const p = h.assetType === "cash" ? 1 : prices[h.symbol];
-        if (p !== undefined) {
-          incomeSum += h.shares * p * (h.dividendRate / 100);
-          hasIncome = true;
-        }
+        if (!h.dividendPerShare || h.dividendPerShare <= 0) return;
+        const amt = h.shares * h.dividendPerShare;
+        if (h.dividendReinvested) { dripSum += amt; hasDrip = true; }
+        else                       { cashSum += amt; hasCash = true; }
       });
-      if (hasIncome) annualIncome = incomeSum;
+      if (hasCash) annualIncome = cashSum;
+      if (hasDrip) dripIncome  = dripSum;
     }
 
     const totalEl = document.createElement("div");
     totalEl.className = "account-total-banner";
     if (pricesLoading) {
-      const spinner = createLoadingSpinner();
-      totalEl.innerHTML = `<span>Total Value: </span><span></span>`;
-      totalEl.querySelector("span").appendChild(spinner);
+      totalEl.innerHTML = `<span>Total Value: </span>`;
+      totalEl.querySelector("span").appendChild(createLoadingSpinner());
     } else if (totalValue !== null) {
       let dayChangeHtml = "";
       if (totalDayChange !== null && Math.abs(totalDayChange) >= 0.01) {
@@ -121,9 +118,13 @@ export function renderHoldingList(
         const color = totalDayChange > 0 ? "var(--color-success)" : "var(--color-danger)";
         dayChangeHtml = ` <span class="total-day-change" style="color:${color}">(${sign}${formatCurrency(Math.abs(totalDayChange))} today)</span>`;
       }
+      const dripHtml = dripIncome !== null
+        ? ` <span class="dim">(+${formatCurrency(dripIncome)} DRIP)</span>` : "";
       const incomeHtml = annualIncome !== null
-        ? `<strong>${formatCurrency(annualIncome)}</strong>`
-        : `<span class="dim">—</span>`;
+        ? `<strong>${formatCurrency(annualIncome)}</strong>${dripHtml}`
+        : dripIncome !== null
+          ? `<span class="dim">—</span>${dripHtml}`
+          : `<span class="dim">—</span>`;
       totalEl.innerHTML = `
         <span>Total Value: <strong>${formatCurrency(totalValue)}</strong>${dayChangeHtml}</span>
         <span class="income-stat">Est. Annual Income: ${incomeHtml}</span>

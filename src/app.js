@@ -628,10 +628,10 @@ async function loadDividendRates() {
     rateMap[sym] = await fetchDividendMetric(sym);
   }));
   for (const { accountId, holding } of allHoldings) {
-    const rate = rateMap[holding.symbol];
-    // Only update if API returned a non-zero rate
-    if (rate > 0) {
-      updateHoldingDividend(accountId, holding.id, rate);
+    const dps = rateMap[holding.symbol];
+    // Only update if API returned a non-zero value; never overwrite a user-set value with 0
+    if (dps > 0) {
+      updateHoldingDividend(accountId, holding.id, dps);
     }
   }
 }

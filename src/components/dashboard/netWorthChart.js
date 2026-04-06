@@ -5,14 +5,18 @@ function svgEl(tag, attrs = {}) {
 }
 
 function fmtShortDate(iso) {
-  const [y, m] = iso.split("-");
-  return new Date(+y, +m - 1, 1).toLocaleString("en-US", { month: "short", year: "2-digit" });
+  const [y, m, d] = iso.split("-");
+  return new Date(+y, +m - 1, +d).toLocaleString("en-US", { month: "short", day: "numeric", year: "2-digit" });
 }
 
-function fmtValue(v) {
-  if (v >= 1_000_000) return "$" + (v / 1_000_000).toFixed(1) + "M";
-  if (v >= 1_000) return "$" + Math.round(v / 1_000) + "K";
-  return "$" + Math.round(v);
+function makeFmtValue(range) {
+  const step = range / 2;
+  if (step >= 1_000_000) return v => "$" + (v / 1_000_000).toFixed(1) + "M";
+  if (step >= 100_000)   return v => "$" + (v / 1_000_000).toFixed(2) + "M";
+  if (step >= 10_000)    return v => "$" + (v / 1_000_000).toFixed(3) + "M";
+  if (step >= 1_000)     return v => "$" + Math.round(v / 1_000) + "K";
+  if (step >= 100)       return v => "$" + (v / 1_000).toFixed(1) + "K";
+  return v => "$" + Math.round(v);
 }
 
 /**
@@ -44,6 +48,7 @@ export function createNetWorthChart(points) {
   const minVal = Math.min(...vals);
   const maxVal = Math.max(...vals);
   const range = maxVal - minVal || 1;
+  const fmtValue = makeFmtValue(range);
   const n = points.length;
 
   const xOf = i => pad.left + (i / (n - 1)) * chartW;
