@@ -82,6 +82,13 @@ def init_db():
             amount         REAL NOT NULL,
             excluded       INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS account_value_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            date       TEXT NOT NULL,
+            value      REAL NOT NULL,
+            UNIQUE(account_id, date)
+        );
         CREATE TABLE IF NOT EXISTS profile_settings (
             profile_id    TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
             settings_json TEXT NOT NULL DEFAULT '{}'
@@ -204,6 +211,12 @@ def load_state(profile_id):
                 tx["excluded"] = True
             transactions.append(tx)
 
+        history_rows = con.execute(
+            "SELECT date, value FROM account_value_history WHERE account_id = ? ORDER BY date",
+            (a["id"],)
+        ).fetchall()
+        value_history = [{"date": r["date"], "value": r["value"]} for r in history_rows]
+
         accounts.append({
             "id":             a["id"],
             "name":           a["name"],
@@ -213,6 +226,7 @@ def load_state(profile_id):
             "createdAt":      a["created_at"],
             "holdings":       holdings,
             "transactions":   transactions,
+            "valueHistory":   value_history,
         })
 
     # ── Categories + Subcategories ────────────────────────────────────────────
@@ -368,6 +382,12 @@ def save_state(data, profile_id):
                             t["amount"],
                             1 if t.get("excluded") else 0,
                         )
+                    )
+                for vh in acc.get("valueHistory", []):
+                    con.execute(
+                        "INSERT OR REPLACE INTO account_value_history (account_id, date, value) "
+                        "VALUES (?, ?, ?)",
+                        (acc["id"], vh["date"], vh["value"])
                     )
 
             # ── Profile Settings ────────────────────────────────────────────────

@@ -138,13 +138,14 @@ export function getAccountValueHistory(accountId) {
 
 // ── Holding CRUD ──────────────────────────────────────────────────────────────
 
-export function addHolding(accountId, symbol, shares, origin, assetType) {
+export function addHolding(accountId, symbol, shares, origin, assetType, dividendRate) {
   const holding = {
     id: generateId(),
     symbol: symbol.trim().toUpperCase(),
     shares: parseFloat(shares),
     ...(origin ? { origin } : {}),
     ...(assetType ? { assetType } : {}),
+    ...(dividendRate != null && dividendRate !== '' ? { dividendRate: parseFloat(dividendRate) } : {}),
   };
   _data = {
     ..._data,
@@ -159,7 +160,7 @@ export function addHolding(accountId, symbol, shares, origin, assetType) {
   return holding;
 }
 
-export function updateHolding(accountId, holdingId, symbol, shares, origin, assetType) {
+export function updateHolding(accountId, holdingId, symbol, shares, origin, assetType, dividendRate) {
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) => {
@@ -171,7 +172,27 @@ export function updateHolding(accountId, holdingId, symbol, shares, origin, asse
           const updated = { ...h, symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) };
           if (origin) updated.origin = origin; else delete updated.origin;
           if (assetType) updated.assetType = assetType; else delete updated.assetType;
+          if (dividendRate != null && dividendRate !== '') updated.dividendRate = parseFloat(dividendRate);
+          else delete updated.dividendRate;
           return updated;
+        }),
+      };
+    }),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
+export function updateHoldingDividend(accountId, holdingId, dividendRate) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) => {
+      if (a.id !== accountId) return a;
+      return {
+        ...a,
+        holdings: a.holdings.map((h) => {
+          if (h.id !== holdingId) return h;
+          return { ...h, dividendRate };
         }),
       };
     }),

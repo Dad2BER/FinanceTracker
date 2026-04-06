@@ -39,6 +39,11 @@ export function showHoldingForm(accountId, holding = null) {
         <option value="cash" ${isEdit && holding.assetType === "cash" ? "selected" : ""}>Cash</option>
       </select>
     </div>
+    <div class="form-group" id="hf-dividend-group">
+      <label for="hf-dividend">Dividend Rate (%)</label>
+      <input id="hf-dividend" type="number" class="form-input" placeholder="e.g. 3.5" min="0" step="0.01"
+        value="${isEdit && holding.dividendRate != null ? holding.dividendRate : ""}">
+    </div>
     <div class="form-actions">
       <button class="btn btn-secondary" id="hf-cancel">Cancel</button>
       <button class="btn btn-primary" id="hf-submit">${isEdit ? "Save" : "Add"}</button>
@@ -49,6 +54,8 @@ export function showHoldingForm(accountId, holding = null) {
   const sharesInput = el.querySelector("#hf-shares");
   const originSelect = el.querySelector("#hf-origin");
   const typeSelect = el.querySelector("#hf-type");
+  const dividendInput = el.querySelector("#hf-dividend");
+  const dividendGroup = el.querySelector("#hf-dividend-group");
   const symbolErr = el.querySelector("#hf-symbol-err");
   const sharesErr = el.querySelector("#hf-shares-err");
   const symbolLabel = el.querySelector("label[for='hf-symbol']");
@@ -60,6 +67,7 @@ export function showHoldingForm(accountId, holding = null) {
     symbolInput.placeholder = isCash ? "e.g. Savings" : "e.g. AAPL";
     sharesLabel.textContent = isCash ? "Amount ($)" : "Shares";
     sharesInput.placeholder = isCash ? "e.g. 5000" : "e.g. 10.5";
+    dividendGroup.style.display = isCash ? "none" : "";
   }
 
   typeSelect.addEventListener("change", updateCashLabels);
@@ -91,11 +99,13 @@ export function showHoldingForm(accountId, holding = null) {
 
     const origin = originSelect.value || undefined;
     const assetType = typeSelect.value || undefined;
+    const dividendRaw = dividendInput.value.trim();
+    const dividendRate = dividendRaw !== "" ? parseFloat(dividendRaw) : undefined;
 
     if (isEdit) {
-      updateHolding(accountId, holding.id, symbol, shares, origin, assetType);
+      updateHolding(accountId, holding.id, symbol, shares, origin, assetType, dividendRate);
     } else {
-      addHolding(accountId, symbol, shares, origin, assetType);
+      addHolding(accountId, symbol, shares, origin, assetType, dividendRate);
     }
     Modal.close();
   });

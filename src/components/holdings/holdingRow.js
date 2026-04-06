@@ -49,6 +49,12 @@ export function createHoldingRow(accountId, holding, prices, quoteDetails, price
   const typeCell = holding.assetType
     ? `<td>${TYPE_LABELS[holding.assetType] ?? escHtml(holding.assetType)}</td>`
     : `<td><span class="dim">—</span></td>`;
+  const dr = (!isCash && holding.dividendRate != null && holding.dividendRate > 0)
+    ? holding.dividendRate
+    : null;
+  const dividendCell = dr !== null
+    ? `<td class="align-right">${dr.toFixed(2)}%</td>`
+    : `<td class="align-right dim">—</td>`;
 
   // Symbol cell: clickable for non-cash (opens stock info popup), plain for cash
   const symbolCellHtml = isCash
@@ -60,6 +66,7 @@ export function createHoldingRow(accountId, holding, prices, quoteDetails, price
     <td class="align-right">${holding.shares.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td>
     ${originCell}
     ${typeCell}
+    ${dividendCell}
     ${priceCell}
     ${valueCell}
     <td class="actions-cell">

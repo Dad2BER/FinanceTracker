@@ -69,6 +69,26 @@ export async function fetchQuoteDetail(symbol) {
 }
 
 /**
+ * Fetches the indicated annual dividend yield for a symbol.
+ * Returns the yield as a percentage (e.g. 3.5 for 3.5%), or 0 if unavailable.
+ */
+export async function fetchDividendMetric(symbol) {
+  const API_KEY = window.__FINNHUB_API_KEY__ || "";
+  if (!API_KEY) return 0;
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${API_KEY}`
+    );
+    if (!res.ok) return 0;
+    const data = await res.json();
+    const rate = data?.metric?.dividendYieldIndicatedAnnual;
+    return (rate != null && rate > 0) ? rate : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Fetches the company profile for a symbol.
  * Returns the raw Finnhub /stock/profile2 response:
  *   { name, exchange, finnhubIndustry, marketCapitalization,

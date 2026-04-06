@@ -409,9 +409,15 @@
       padding: 0.75rem 1rem;
       margin-bottom: 1rem;
       font-size: 0.95rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
     }
     .account-total-banner strong { color: var(--color-success); font-size: 1.05rem; }
     .total-day-change { font-size: 0.85rem; font-weight: 600; margin-left: 0.4rem; }
+    .income-stat { font-size: 0.95rem; }
 
     .table-wrapper {
       background: var(--color-surface);
@@ -875,6 +881,58 @@
     }
     .legend-pct {
       font-size: 0.8rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    /* ── Net Worth Chart Card ───────────────────────────────────────────────── */
+    .nw-chart-card {
+      margin-top: 1.5rem;
+    }
+    .nw-chart-card h3 {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--color-text-dim);
+      margin-bottom: 0.75rem;
+    }
+    .nw-chart-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* ── Allocation legend column (for target editing) ──────────────────────── */
+    .pie-legend-col {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+
+    .nw-edit-targets-btn {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      margin-top: 0.35rem;
+      align-self: flex-start;
+    }
+
+    .nw-target-input {
+      width: 44px;
+      text-align: right;
+      font-size: 0.78rem;
+      padding: 0.1rem 0.3rem;
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      color: var(--color-text);
+      flex-shrink: 0;
+    }
+
+    .nw-variance-badge {
+      font-size: 0.72rem;
       font-weight: 600;
       flex-shrink: 0;
     }
@@ -1646,6 +1704,93 @@
       .ret-assump-grid   { grid-template-columns: 1fr; }
       .ret-two-col       { grid-template-columns: 1fr; }
       .ret-summary-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ── Social Security inputs ──────────────────────────────────────────────── */
+    .ret-ss-group {
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.6rem;
+    }
+    .ret-ss-group-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-text-dim);
+      margin-bottom: 0.5rem;
+    }
+    .ret-ss-annual-hint {
+      display: block;
+      font-size: 0.72rem;
+      color: var(--color-primary);
+      margin-top: 0.2rem;
+      min-height: 1em;
+    }
+    .ret-ss-insolvency-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #d97706;
+      background: #451a03;
+      border: 1px solid #92400e;
+      border-radius: 6px;
+      padding: 0.4rem 0.7rem;
+      margin-bottom: 0.75rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .ret-ss-insolvency-row input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      accent-color: #d97706;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* ── Monte Carlo ─────────────────────────────────────────────────────────── */
+    .mc-summary-stack { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
+    .mc-summary-stack .ret-summary-card { min-width: 0; }
+    .mc-stats-note { margin-bottom: 1rem; }
+    .mc-chart-wrap { min-height: 340px; }
+
+    /* ── Withdrawal Strategies ───────────────────────────────────────────────── */
+    .strat-desc-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .strat-desc-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .strat-color-dot {
+      width: 28px;
+      height: 4px;
+      border-radius: 2px;
+      margin-bottom: 0.25rem;
+    }
+    .strat-card-label  { font-size: 0.85rem; font-weight: 700; }
+    .strat-card-result { font-size: 0.9rem;  font-weight: 600; }
+    .strat-card-age90  { font-size: 0.8rem;  color: var(--color-text-dim); }
+    .strat-card-desc   { font-size: 0.75rem; color: var(--color-text-dim); margin-top: 0.25rem; line-height: 1.4; }
+    .strat-table th, .strat-table td { font-size: 0.8rem; }
+
+    @media (max-width: 900px) {
+      .strat-desc-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 560px) {
+      .strat-desc-grid { grid-template-columns: 1fr; }
     }
 
     /* ── Historic Returns page ───────────────────────────────────────────────── */
