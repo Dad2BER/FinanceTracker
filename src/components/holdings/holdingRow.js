@@ -49,7 +49,7 @@ export function createHoldingRow(accountId, holding, prices, quoteDetails, price
   const typeCell = holding.assetType
     ? `<td>${TYPE_LABELS[holding.assetType] ?? escHtml(holding.assetType)}</td>`
     : `<td><span class="dim">—</span></td>`;
-  const dr = (!isCash && holding.dividendRate != null && holding.dividendRate > 0)
+  const dr = (holding.dividendRate != null && holding.dividendRate > 0)
     ? holding.dividendRate
     : null;
   const dividendCell = dr !== null

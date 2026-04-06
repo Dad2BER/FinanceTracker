@@ -109,7 +109,7 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     ? `<td class="symbol-cell"><strong>${escHtml(symbol)}</strong></td>`
     : `<td class="symbol-cell"><button class="symbol-link" data-action="info" title="View ${escHtml(symbol)} info">${escHtml(symbol)}</button></td>`;
 
-  const dr = (!isCash && entry.dividendRate > 0) ? entry.dividendRate : null;
+  const dr = (entry.dividendRate > 0) ? entry.dividendRate : null;
   const dividendValueHtml = dr !== null ? `${dr.toFixed(2)}%` : `<span class="dim">—</span>`;
 
   tr.innerHTML = `
@@ -117,7 +117,7 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     <td class="align-right">${shares.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td>
     <td>${originTxt ? originTxt : '<span class="dim">—</span>'}</td>
     <td>${typeTxt   ? typeTxt   : '<span class="dim">—</span>'}</td>
-    <td class="align-right dividend-edit-cell">${dividendValueHtml}${isCash ? "" : ` <button class="icon-btn dividend-edit-btn" title="Edit dividend rate">&#9998;</button>`}</td>
+    <td class="align-right dividend-edit-cell">${dividendValueHtml} <button class="icon-btn dividend-edit-btn" title="Edit dividend rate">&#9998;</button></td>
     ${priceCell}
     ${valueCell}
   `;
@@ -126,10 +126,10 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     tr.querySelector("[data-action='info']")?.addEventListener("click", () =>
       showStockInfo(symbol)
     );
-    tr.querySelector(".dividend-edit-btn")?.addEventListener("click", () =>
-      showDividendModal(symbol, entry.dividendRate)
-    );
   }
+  tr.querySelector(".dividend-edit-btn")?.addEventListener("click", () =>
+    showDividendModal(symbol, entry.dividendRate)
+  );
 
   return tr;
 }

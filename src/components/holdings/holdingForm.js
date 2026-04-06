@@ -67,7 +67,7 @@ export function showHoldingForm(accountId, holding = null) {
     symbolInput.placeholder = isCash ? "e.g. Savings" : "e.g. AAPL";
     sharesLabel.textContent = isCash ? "Amount ($)" : "Shares";
     sharesInput.placeholder = isCash ? "e.g. 5000" : "e.g. 10.5";
-    dividendGroup.style.display = isCash ? "none" : "";
+    dividendGroup.style.display = "";
   }
 
   typeSelect.addEventListener("change", updateCashLabels);
