@@ -92,17 +92,18 @@ export function renderHoldingList(
       if (hasAny) totalDayChange = sum;
     }
 
-    // Est. Annual Income: sum of shares × dividendPerShare for non-reinvested holdings
-    let annualIncome = null;
+    // Est. Annual Income: cash (non-reinvested) + DRIP (reinvested) totals
+    let annualIncome = null, dripIncome = null;
     {
-      let incomeSum = 0, hasIncome = false;
+      let cashSum = 0, hasCash = false, dripSum = 0, hasDrip = false;
       account.holdings.forEach((h) => {
         if (!h.dividendPerShare || h.dividendPerShare <= 0) return;
-        if (h.dividendReinvested) return;
-        incomeSum += h.shares * h.dividendPerShare;
-        hasIncome = true;
+        const amt = h.shares * h.dividendPerShare;
+        if (h.dividendReinvested) { dripSum += amt; hasDrip = true; }
+        else                       { cashSum += amt; hasCash = true; }
       });
-      if (hasIncome) annualIncome = incomeSum;
+      if (hasCash) annualIncome = cashSum;
+      if (hasDrip) dripIncome  = dripSum;
     }
 
     const totalEl = document.createElement("div");
@@ -117,9 +118,13 @@ export function renderHoldingList(
         const color = totalDayChange > 0 ? "var(--color-success)" : "var(--color-danger)";
         dayChangeHtml = ` <span class="total-day-change" style="color:${color}">(${sign}${formatCurrency(Math.abs(totalDayChange))} today)</span>`;
       }
+      const dripHtml = dripIncome !== null
+        ? ` <span class="dim">(+${formatCurrency(dripIncome)} DRIP)</span>` : "";
       const incomeHtml = annualIncome !== null
-        ? `<strong>${formatCurrency(annualIncome)}</strong>`
-        : `<span class="dim">—</span>`;
+        ? `<strong>${formatCurrency(annualIncome)}</strong>${dripHtml}`
+        : dripIncome !== null
+          ? `<span class="dim">—</span>${dripHtml}`
+          : `<span class="dim">—</span>`;
       totalEl.innerHTML = `
         <span>Total Value: <strong>${formatCurrency(totalValue)}</strong>${dayChangeHtml}</span>
         <span class="income-stat">Est. Annual Income: ${incomeHtml}</span>
