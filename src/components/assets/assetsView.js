@@ -227,6 +227,17 @@ export function renderAssetsView(
     }
   }
 
+  let annualIncome = null;
+  if (!pricesLoading && prices !== null) {
+    let incomeSum = 0, hasIncome = false;
+    entries.forEach((e) => {
+      if (!e.dividendRate || e.dividendRate <= 0) return;
+      const p = e.isCash ? 1 : prices[e.symbol];
+      if (p !== undefined) { incomeSum += e.shares * p * (e.dividendRate / 100); hasIncome = true; }
+    });
+    if (hasIncome) annualIncome = incomeSum;
+  }
+
   const totalEl = document.createElement("div");
   totalEl.className = "account-total-banner";
   if (pricesLoading) {
@@ -239,7 +250,13 @@ export function renderAssetsView(
       const color = totalDayChange > 0 ? "var(--color-success)" : "var(--color-danger)";
       dayChangeHtml = ` <span class="total-day-change" style="color:${color}">(${sign}${formatCurrency(Math.abs(totalDayChange))} today)</span>`;
     }
-    totalEl.innerHTML = `<span>Total Value: <strong>${formatCurrency(totalValue)}</strong>${dayChangeHtml}</span>`;
+    const incomeHtml = annualIncome !== null
+      ? `<strong>${formatCurrency(annualIncome)}</strong>`
+      : `<span class="dim">—</span>`;
+    totalEl.innerHTML = `
+      <span>Total Value: <strong>${formatCurrency(totalValue)}</strong>${dayChangeHtml}</span>
+      <span class="income-stat">Est. Annual Income: ${incomeHtml}</span>
+    `;
   }
   container.appendChild(totalEl);
 
