@@ -47,16 +47,19 @@ function aggregateHoldings(accounts) {
         e.shares += h.shares;
         if (h.origin)    e.origins.add(h.origin);
         if (h.assetType) e.types.add(h.assetType);
-        // Use first non-zero dividendRate found for this symbol
-        if (!e.dividendRate && h.dividendRate > 0) e.dividendRate = h.dividendRate;
+        // Use first non-zero dividendPerShare found for this symbol
+        if (!e.dividendPerShare && h.dividendPerShare > 0) e.dividendPerShare = h.dividendPerShare;
+        // DRIP: true only if ALL holdings of this symbol are reinvested
+        if (!h.dividendReinvested) e.dividendReinvested = false;
       } else {
         map.set(h.symbol, {
-          symbol:       h.symbol,
-          shares:       h.shares,
-          isCash:       h.assetType === "cash",
-          origins:      new Set(h.origin    ? [h.origin]    : []),
-          types:        new Set(h.assetType ? [h.assetType] : []),
-          dividendRate: (h.dividendRate > 0) ? h.dividendRate : null,
+          symbol:             h.symbol,
+          shares:             h.shares,
+          isCash:             h.assetType === "cash",
+          origins:            new Set(h.origin    ? [h.origin]    : []),
+          types:              new Set(h.assetType ? [h.assetType] : []),
+          dividendPerShare:   (h.dividendPerShare > 0) ? h.dividendPerShare : null,
+          dividendReinvested: h.dividendReinvested ?? false,
         });
       }
     });
@@ -109,8 +112,16 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     ? `<td class="symbol-cell"><strong>${escHtml(symbol)}</strong></td>`
     : `<td class="symbol-cell"><button class="symbol-link" data-action="info" title="View ${escHtml(symbol)} info">${escHtml(symbol)}</button></td>`;
 
-  const dr = (entry.dividendRate > 0) ? entry.dividendRate : null;
-  const dividendValueHtml = dr !== null ? `${dr.toFixed(2)}%` : `<span class="dim">—</span>`;
+  const dps = (entry.dividendPerShare > 0) ? entry.dividendPerShare : null;
+  let dividendValueHtml;
+  if (dps !== null) {
+    const pricePaid = isCash ? 1 : (prices ? prices[symbol] : undefined);
+    const yieldPct = pricePaid ? (dps / pricePaid * 100).toFixed(2) + "%" : `$${dps.toFixed(4)}/sh`;
+    const dripBadge = entry.dividendReinvested ? ` <span class="drip-badge">DRIP</span>` : "";
+    dividendValueHtml = `${yieldPct}${dripBadge}`;
+  } else {
+    dividendValueHtml = `<span class="dim">—</span>`;
+  }
 
   tr.innerHTML = `
     ${symbolCell}
@@ -128,33 +139,40 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     );
   }
   tr.querySelector(".dividend-edit-btn")?.addEventListener("click", () =>
-    showDividendModal(symbol, entry.dividendRate)
+    showDividendModal(symbol, entry.dividendPerShare, entry.dividendReinvested)
   );
 
   return tr;
 }
 
-function showDividendModal(symbol, currentRate) {
+function showDividendModal(symbol, currentDps, currentDrip) {
   const el = document.createElement("div");
   el.className = "holding-form";
   el.innerHTML = `
-    <h3>Dividend Rate — ${escHtml(symbol)}</h3>
+    <h3>Dividend — ${escHtml(symbol)}</h3>
     <div class="form-group">
-      <label for="div-rate-input">Annual Dividend Rate (%)</label>
-      <input id="div-rate-input" type="number" class="form-input" placeholder="e.g. 3.5"
-        min="0" step="0.01" value="${currentRate != null && currentRate > 0 ? currentRate : ""}">
+      <label for="div-dps-input">Annual Dividend ($/share)</label>
+      <input id="div-dps-input" type="number" class="form-input" placeholder="e.g. 2.88"
+        min="0" step="0.0001" value="${currentDps != null && currentDps > 0 ? currentDps : ""}">
+    </div>
+    <div class="form-group">
+      <label class="checkbox-label">
+        <input id="div-drip" type="checkbox" ${currentDrip ? "checked" : ""}>
+        Dividends reinvested (DRIP)
+      </label>
     </div>
     <div class="form-actions">
       <button class="btn btn-secondary" id="div-cancel">Cancel</button>
       <button class="btn btn-primary" id="div-save">Save</button>
     </div>
   `;
-  const input = el.querySelector("#div-rate-input");
+  const input = el.querySelector("#div-dps-input");
+  const drip  = el.querySelector("#div-drip");
   el.querySelector("#div-cancel").addEventListener("click", () => Modal.close());
   el.querySelector("#div-save").addEventListener("click", () => {
     const raw = input.value.trim();
-    const rate = raw !== "" ? parseFloat(raw) : undefined;
-    updateDividendBySymbol(symbol, rate);
+    const dps = raw !== "" ? parseFloat(raw) : undefined;
+    updateDividendBySymbol(symbol, dps, drip.checked);
     Modal.close();
   });
   Modal.open(el);
@@ -228,12 +246,13 @@ export function renderAssetsView(
   }
 
   let annualIncome = null;
-  if (!pricesLoading && prices !== null) {
+  {
     let incomeSum = 0, hasIncome = false;
     entries.forEach((e) => {
-      if (!e.dividendRate || e.dividendRate <= 0) return;
-      const p = e.isCash ? 1 : prices[e.symbol];
-      if (p !== undefined) { incomeSum += e.shares * p * (e.dividendRate / 100); hasIncome = true; }
+      if (!e.dividendPerShare || e.dividendPerShare <= 0) return;
+      if (e.dividendReinvested) return;
+      incomeSum += e.shares * e.dividendPerShare;
+      hasIncome = true;
     });
     if (hasIncome) annualIncome = incomeSum;
   }

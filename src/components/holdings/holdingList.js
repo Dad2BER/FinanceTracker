@@ -92,18 +92,15 @@ export function renderHoldingList(
       if (hasAny) totalDayChange = sum;
     }
 
-    // Est. Annual Income: sum of shares × price × dividendRate/100 for holdings with known rate and price
+    // Est. Annual Income: sum of shares × dividendPerShare for non-reinvested holdings
     let annualIncome = null;
-    if (!pricesLoading && prices !== null) {
-      let incomeSum = 0;
-      let hasIncome = false;
+    {
+      let incomeSum = 0, hasIncome = false;
       account.holdings.forEach((h) => {
-        if (!h.dividendRate || h.dividendRate <= 0) return;
-        const p = h.assetType === "cash" ? 1 : prices[h.symbol];
-        if (p !== undefined) {
-          incomeSum += h.shares * p * (h.dividendRate / 100);
-          hasIncome = true;
-        }
+        if (!h.dividendPerShare || h.dividendPerShare <= 0) return;
+        if (h.dividendReinvested) return;
+        incomeSum += h.shares * h.dividendPerShare;
+        hasIncome = true;
       });
       if (hasIncome) annualIncome = incomeSum;
     }
@@ -111,9 +108,8 @@ export function renderHoldingList(
     const totalEl = document.createElement("div");
     totalEl.className = "account-total-banner";
     if (pricesLoading) {
-      const spinner = createLoadingSpinner();
-      totalEl.innerHTML = `<span>Total Value: </span><span></span>`;
-      totalEl.querySelector("span").appendChild(spinner);
+      totalEl.innerHTML = `<span>Total Value: </span>`;
+      totalEl.querySelector("span").appendChild(createLoadingSpinner());
     } else if (totalValue !== null) {
       let dayChangeHtml = "";
       if (totalDayChange !== null && Math.abs(totalDayChange) >= 0.01) {

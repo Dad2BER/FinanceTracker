@@ -40,9 +40,15 @@ export function showHoldingForm(accountId, holding = null) {
       </select>
     </div>
     <div class="form-group" id="hf-dividend-group">
-      <label for="hf-dividend">Dividend Rate (%)</label>
-      <input id="hf-dividend" type="number" class="form-input" placeholder="e.g. 3.5" min="0" step="0.01"
-        value="${isEdit && holding.dividendRate != null ? holding.dividendRate : ""}">
+      <label for="hf-dividend">Annual Dividend ($/share)</label>
+      <input id="hf-dividend" type="number" class="form-input" placeholder="e.g. 2.88" min="0" step="0.0001"
+        value="${isEdit && holding.dividendPerShare != null ? holding.dividendPerShare : ""}">
+    </div>
+    <div class="form-group" id="hf-drip-group">
+      <label class="checkbox-label">
+        <input id="hf-drip" type="checkbox" ${isEdit && holding.dividendReinvested ? "checked" : ""}>
+        Dividends reinvested (DRIP)
+      </label>
     </div>
     <div class="form-actions">
       <button class="btn btn-secondary" id="hf-cancel">Cancel</button>
@@ -56,6 +62,8 @@ export function showHoldingForm(accountId, holding = null) {
   const typeSelect = el.querySelector("#hf-type");
   const dividendInput = el.querySelector("#hf-dividend");
   const dividendGroup = el.querySelector("#hf-dividend-group");
+  const dripCheckbox  = el.querySelector("#hf-drip");
+  const dripGroup     = el.querySelector("#hf-drip-group");
   const symbolErr = el.querySelector("#hf-symbol-err");
   const sharesErr = el.querySelector("#hf-shares-err");
   const symbolLabel = el.querySelector("label[for='hf-symbol']");
@@ -68,6 +76,7 @@ export function showHoldingForm(accountId, holding = null) {
     sharesLabel.textContent = isCash ? "Amount ($)" : "Shares";
     sharesInput.placeholder = isCash ? "e.g. 5000" : "e.g. 10.5";
     dividendGroup.style.display = "";
+    dripGroup.style.display = "";
   }
 
   typeSelect.addEventListener("change", updateCashLabels);
@@ -100,12 +109,13 @@ export function showHoldingForm(accountId, holding = null) {
     const origin = originSelect.value || undefined;
     const assetType = typeSelect.value || undefined;
     const dividendRaw = dividendInput.value.trim();
-    const dividendRate = dividendRaw !== "" ? parseFloat(dividendRaw) : undefined;
+    const dividendPerShare = dividendRaw !== "" ? parseFloat(dividendRaw) : undefined;
+    const dividendReinvested = dripCheckbox.checked;
 
     if (isEdit) {
-      updateHolding(accountId, holding.id, symbol, shares, origin, assetType, dividendRate);
+      updateHolding(accountId, holding.id, symbol, shares, origin, assetType, dividendPerShare, dividendReinvested);
     } else {
-      addHolding(accountId, symbol, shares, origin, assetType, dividendRate);
+      addHolding(accountId, symbol, shares, origin, assetType, dividendPerShare, dividendReinvested);
     }
     Modal.close();
   });

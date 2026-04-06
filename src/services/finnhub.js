@@ -81,8 +81,8 @@ export async function fetchDividendMetric(symbol) {
     );
     if (!res.ok) return 0;
     const data = await res.json();
-    const rate = data?.metric?.dividendYieldIndicatedAnnual;
-    return (rate != null && rate > 0) ? rate : 0;
+    const dps = data?.metric?.dividendPerShareAnnual;
+    return (dps != null && dps > 0) ? dps : 0;
   } catch {
     return 0;
   }
