@@ -8,7 +8,7 @@ Guidance for Claude Code when working in this repository.
 
 - **Commit to `master` after every completed feature.** No branches needed — commit directly and `git push origin master`.
 - There are no CI checks, linters, or tests. The commit is the checkpoint.
-- The worktree at `.claude/worktrees/amazing-nightingale/` mirrors this repo but the **server always serves from the main project directory** (`C:\Claude\FinanceTracker\`). Always edit files here; never rely on worktree copies being picked up by the running server.
+- The current active worktree is `.claude/worktrees/brave-kirch/` — this name changes each session. The **server always serves from the main project directory** (`C:\Claude\FinanceTracker\`). Always edit files in the worktree, then `cp` them to the main project dir before testing. Never rely on worktree copies being picked up by the running server.
 
 ---
 
@@ -87,6 +87,8 @@ addTransaction / updateTransaction / deleteTransaction
 addCategory / updateCategory / deleteCategory
 addPayee / updatePayee / deletePayee
 recordAccountValue(accountId, date, value)
+updateHoldingDividend(accountId, holdingId, dividendPerShare)  // lightweight; used by startup fetch
+updateDividendBySymbol(symbol, dividendPerShare, dividendReinvested)  // updates all holdings of a symbol
 getRetirementInputs()
 saveRetirementInputs(inputs)    // updates _data + localStorage + async POST
 flushRetirementInputs(inputs)   // localStorage only — safe on every keystroke
@@ -96,10 +98,15 @@ getRetirementInputsFromStorage(profileId?)
 ### Persistence Layers
 | Layer | Key | When written |
 |-------|-----|-------------|
-| Server JSON file | `/api/data?profile=<id>` | Every mutation via `saveData()` async POST |
+| SQLite via `server.py` | `/api/data?profile=<id>` | Every mutation via `saveData()` async POST |
 | localStorage (retirement inputs) | `financetracker_ret_<profileId>` | Every keystroke via `flushRetirementInputs` |
 | API keys | `financetracker_apikey`, `financetracker_avkey` | Settings save |
 | Active profile | `financetracker_active_profile` | Profile switch |
+
+**`server.py` SQLite schema — `holdings` table columns:**
+`id`, `account_id`, `symbol`, `shares`, `origin`, `asset_type`, `sort_order`, `dividend_per_share` (REAL), `dividend_reinvested` (INTEGER 0/1)
+- `dividend_rate` column also exists as a legacy stub (unused; superseded by `dividend_per_share`)
+- Schema migrations run at startup via `init_db()` using `ALTER TABLE … ADD COLUMN` wrapped in try/except — safe to re-run on existing databases.
 
 **Retirement input load order** (in `retirementView.js → ensureLoaded()`):
 1. Read `localStorage` first (always freshest — written on every keystroke)
@@ -110,11 +117,13 @@ getRetirementInputsFromStorage(profileId?)
 | File | Purpose |
 |------|---------|
 | `storage.js` | REST calls to `server.py` (`/api/profiles`, `/api/data`) and localStorage helpers |
-| `finnhub.js` | Fetches quotes from `api.finnhub.io` using `window.__FINNHUB_API_KEY__` |
+| `finnhub.js` | Fetches quotes + dividend data from `api.finnhub.io` using `window.__FINNHUB_API_KEY__` |
 | `alphavantage.js` | Fallback for mutual funds (e.g. FXAIX) using `window.__AV_API_KEY__` |
 | `prices.js` | Orchestrates Finnhub → Alpha Vantage fallback; returns `{ prices, quoteDetails, needsManualEntry }` |
 
 **Price state** is local to `app.js` (not in `state.js`): `prices`, `quoteDetails`, `pricesLoading`, `pricesError`. Prices are never fetched for retirement or reports tabs.
+
+**Dividend fetch** (`finnhub.js → fetchDividendMetric(symbol)`): called once at bootstrap via `loadDividendRates()` in `app.js`. Fetches `dividendPerShareAnnual` from Finnhub's `/stock/metric` endpoint. Only updates a holding if the API returns > 0 — never overwrites a user-set value with 0. Cash-type holdings (e.g. money market funds) are **excluded** from the startup fetch since Finnhub won't have them; users set those manually.
 
 ### Component Conventions
 - Components are **plain functions**: `renderFoo(container, ...props)` — they set `container.innerHTML` or use `appendChild`.
@@ -158,10 +167,15 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
   shares: number,
   origin: "domestic" | "international",
   assetType: "stock-fund" | "real-estate" | "company" | "crypto" | "bonds" | "cash",
+  dividendPerShare: number,   // optional — annual dividend in $/share (e.g. 2.88)
+  dividendReinvested: boolean, // optional — true if DRIP; excluded from Est. Annual Income
 }
 ```
 - `cash` holdings: price is always $1/share, symbol is a display label, skipped by price APIs.
+- **Cash holdings CAN have dividendPerShare** — money market funds like VMFXX and FDRXX earn yield this way.
 - Mutual funds (e.g. FXAIX): fetched via Alpha Vantage since Finnhub doesn't support them.
+- Dividend is stored as **$/share** (not %). The UI displays it as yield % (`dividendPerShare / price × 100`), so yield fluctuates naturally as price changes. Falls back to `$X.XX/sh` display when price unavailable.
+- DRIP holdings show an amber **DRIP** badge in the Dividend column and are excluded from Est. Annual Income banners.
 
 ### Transaction (ledger accounts)
 ```js
@@ -240,6 +254,13 @@ All styles are in `index.html`'s `<style>` block. Key namespaces:
 - `.hsim-*` — historic simulation specific (slider, top-row layout, pie chart)
 - `.hist-*` — historic returns table
 - `.report-*` — reports tab
+
+Holdings / dividend-specific classes:
+- `.account-total-banner` — flex row; Total Value (left) + Est. Annual Income (right)
+- `.income-stat` — right-side income span inside the banner
+- `.drip-badge` — amber inline badge shown in Dividend column for reinvested holdings
+- `.dividend-edit-cell` — Dividend `<td>` in Assets view; pencil icon hidden until hover
+- `.checkbox-label` — flex row label wrapping a checkbox + text (used in forms)
 
 When adding a new page, add its CSS in `index.html` alongside a comment marking the section.
 
