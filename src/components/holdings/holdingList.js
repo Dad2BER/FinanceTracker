@@ -92,11 +92,28 @@ export function renderHoldingList(
       if (hasAny) totalDayChange = sum;
     }
 
+    // Est. Annual Income: sum of shares × price × dividendRate/100 for holdings with known rate and price
+    let annualIncome = null;
+    if (!pricesLoading && prices !== null) {
+      let incomeSum = 0;
+      let hasIncome = false;
+      account.holdings.forEach((h) => {
+        if (!h.dividendRate || h.dividendRate <= 0) return;
+        const p = h.assetType === "cash" ? 1 : prices[h.symbol];
+        if (p !== undefined) {
+          incomeSum += h.shares * p * (h.dividendRate / 100);
+          hasIncome = true;
+        }
+      });
+      if (hasIncome) annualIncome = incomeSum;
+    }
+
     const totalEl = document.createElement("div");
     totalEl.className = "account-total-banner";
     if (pricesLoading) {
-      totalEl.innerHTML = `<span>Total Value: </span>`;
-      totalEl.querySelector("span").appendChild(createLoadingSpinner());
+      const spinner = createLoadingSpinner();
+      totalEl.innerHTML = `<span>Total Value: </span><span></span>`;
+      totalEl.querySelector("span").appendChild(spinner);
     } else if (totalValue !== null) {
       let dayChangeHtml = "";
       if (totalDayChange !== null && Math.abs(totalDayChange) >= 0.01) {
@@ -104,7 +121,13 @@ export function renderHoldingList(
         const color = totalDayChange > 0 ? "var(--color-success)" : "var(--color-danger)";
         dayChangeHtml = ` <span class="total-day-change" style="color:${color}">(${sign}${formatCurrency(Math.abs(totalDayChange))} today)</span>`;
       }
-      totalEl.innerHTML = `<span>Total Value: <strong>${formatCurrency(totalValue)}</strong>${dayChangeHtml}</span>`;
+      const incomeHtml = annualIncome !== null
+        ? `<strong>${formatCurrency(annualIncome)}</strong>`
+        : `<span class="dim">—</span>`;
+      totalEl.innerHTML = `
+        <span>Total Value: <strong>${formatCurrency(totalValue)}</strong>${dayChangeHtml}</span>
+        <span class="income-stat">Est. Annual Income: ${incomeHtml}</span>
+      `;
     }
     container.appendChild(totalEl);
 
@@ -119,6 +142,7 @@ export function renderHoldingList(
             <th class="align-right">Shares</th>
             <th>Origin</th>
             <th>Type</th>
+            <th class="align-right">Dividend</th>
             <th class="align-right">Price</th>
             <th class="align-right">Value</th>
             <th></th>
@@ -131,10 +155,10 @@ export function renderHoldingList(
     account.holdings.forEach((holding) => {
       tbody.appendChild(createHoldingRow(account.id, holding, prices, quoteDetails, pricesLoading));
     });
-    // Columns: Symbol, Shares, Origin, Type, Price, Value, Actions
+    // Columns: Symbol, Shares, Origin, Type, Dividend, Price, Value, Actions
     attachTableFilter(
       tableWrapper.querySelector("table"),
-      [true, false, true, true, false, false, false]
+      [true, false, true, true, false, false, false, false]
     );
 
     container.appendChild(tableWrapper);

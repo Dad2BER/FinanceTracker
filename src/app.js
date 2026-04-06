@@ -1,5 +1,6 @@
-import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState, recordAccountValue } from "./state.js";
+import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState, recordAccountValue, updateHoldingDividend } from "./state.js";
 import { fetchQuotes } from "./services/prices.js";
+import { fetchDividendMetric } from "./services/finnhub.js";
 import {
   loadData, loadApiKey, saveApiKey, loadAvKey, saveAvKey,
   loadProfiles, createProfile, renameProfile, deleteProfile,
@@ -611,6 +612,30 @@ function uniqueSymbols(accounts) {
   )];
 }
 
+// ── Dividend Rate Fetch ────────────────────────────────────────────────────────
+async function loadDividendRates() {
+  const accounts = getAccounts().filter((a) => a.accountType === "asset");
+  // Collect all non-cash holdings across all asset accounts
+  const allHoldings = accounts.flatMap((a) =>
+    (a.holdings || [])
+      .filter((h) => h.assetType !== "cash")
+      .map((h) => ({ accountId: a.id, holding: h }))
+  );
+  // Fetch dividend rate per unique symbol, then apply to all matching holdings
+  const symbols = [...new Set(allHoldings.map((x) => x.holding.symbol))];
+  const rateMap = {};
+  await Promise.all(symbols.map(async (sym) => {
+    rateMap[sym] = await fetchDividendMetric(sym);
+  }));
+  for (const { accountId, holding } of allHoldings) {
+    const rate = rateMap[holding.symbol];
+    // Only update if API returned a non-zero rate
+    if (rate > 0) {
+      updateHoldingDividend(accountId, holding.id, rate);
+    }
+  }
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function completeBootstrap(data) {
   initState(data ?? { accounts: [] }, currentProfileId);
@@ -627,6 +652,7 @@ async function completeBootstrap(data) {
     initShell();
     render();
     loadPricesForCurrentView();
+    loadDividendRates();
   }
 }
 

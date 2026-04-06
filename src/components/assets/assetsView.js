@@ -45,13 +45,16 @@ function aggregateHoldings(accounts) {
         e.shares += h.shares;
         if (h.origin)    e.origins.add(h.origin);
         if (h.assetType) e.types.add(h.assetType);
+        // Use first non-zero dividendRate found for this symbol
+        if (!e.dividendRate && h.dividendRate > 0) e.dividendRate = h.dividendRate;
       } else {
         map.set(h.symbol, {
-          symbol:   h.symbol,
-          shares:   h.shares,
-          isCash:   h.assetType === "cash",
-          origins:  new Set(h.origin    ? [h.origin]    : []),
-          types:    new Set(h.assetType ? [h.assetType] : []),
+          symbol:       h.symbol,
+          shares:       h.shares,
+          isCash:       h.assetType === "cash",
+          origins:      new Set(h.origin    ? [h.origin]    : []),
+          types:        new Set(h.assetType ? [h.assetType] : []),
+          dividendRate: (h.dividendRate > 0) ? h.dividendRate : null,
         });
       }
     });
@@ -104,11 +107,17 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     ? `<td class="symbol-cell"><strong>${escHtml(symbol)}</strong></td>`
     : `<td class="symbol-cell"><button class="symbol-link" data-action="info" title="View ${escHtml(symbol)} info">${escHtml(symbol)}</button></td>`;
 
+  const dr = (!isCash && entry.dividendRate > 0) ? entry.dividendRate : null;
+  const dividendCell = dr !== null
+    ? `<td class="align-right">${dr.toFixed(2)}%</td>`
+    : `<td class="align-right dim">—</td>`;
+
   tr.innerHTML = `
     ${symbolCell}
     <td class="align-right">${shares.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td>
     <td>${originTxt ? originTxt : '<span class="dim">—</span>'}</td>
     <td>${typeTxt   ? typeTxt   : '<span class="dim">—</span>'}</td>
+    ${dividendCell}
     ${priceCell}
     ${valueCell}
   `;
@@ -215,6 +224,7 @@ export function renderAssetsView(
           <th class="align-right">Shares</th>
           <th>Origin</th>
           <th>Type</th>
+          <th class="align-right">Dividend</th>
           <th class="align-right">Price</th>
           <th class="align-right">Value</th>
         </tr>
@@ -228,18 +238,18 @@ export function renderAssetsView(
     tbody.appendChild(buildRow(entry, prices, quoteDetails, pricesLoading));
   });
 
-  // Columns: Symbol, Shares, Origin, Type, Price, Value
+  // Columns: Symbol, Shares, Origin, Type, Dividend, Price, Value
   attachTableFilter(
     tableWrapper.querySelector("table"),
-    [true, false, true, true, false, false]
+    [true, false, true, true, false, false, false]
   );
 
   // ── Visible-row value sum in the filter row's Value cell ─────────────────────
-  // The filter row's last <th> (Value column, index 5) is an empty cell — we
+  // The filter row's last <th> (Value column, index 6) is an empty cell — we
   // display the running sum of visible rows there.  It starts equal to Total
   // Value and updates live as the user types in any filter.
   const filterRow = tableWrapper.querySelector(".filter-row");
-  const valueTh   = filterRow?.querySelectorAll("th")[5] ?? null;
+  const valueTh   = filterRow?.querySelectorAll("th")[6] ?? null;
   const sumEl     = valueTh ? document.createElement("span") : null;
   if (sumEl) {
     sumEl.className = "filter-col-sum";
@@ -251,8 +261,8 @@ export function renderAssetsView(
     let sum = 0;
     tableWrapper.querySelectorAll("tbody tr").forEach((row) => {
       if (row.style.display === "none") return;
-      // Value cell is the 6th td (index 5); text is formatted currency or "—"
-      const text = (row.querySelectorAll("td")[5]?.textContent ?? "").trim();
+      // Value cell is the 7th td (index 6); text is formatted currency or "—"
+      const text = (row.querySelectorAll("td")[6]?.textContent ?? "").trim();
       const num  = parseFloat(text.replace(/[$,]/g, ""));
       if (!isNaN(num)) sum += num;
     });
