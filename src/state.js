@@ -201,6 +201,20 @@ export function updateHoldingDividend(accountId, holdingId, dividendRate) {
   notify();
 }
 
+export function updateDividendBySymbol(symbol, dividendRate) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) => ({
+      ...a,
+      holdings: a.holdings.map((h) =>
+        h.symbol === symbol ? { ...h, dividendRate } : h
+      ),
+    })),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
 export function deleteHolding(accountId, holdingId) {
   _data = {
     ..._data,

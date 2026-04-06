@@ -2,6 +2,8 @@ import { showStockInfo } from "../holdings/stockInfoModal.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 import { attachTableFilter } from "../../utils/tableFilter.js";
+import { Modal } from "../ui/modal.js";
+import { updateDividendBySymbol } from "../../state.js";
 
 // ── Label maps ────────────────────────────────────────────────────────────────
 const ORIGIN_LABELS = { domestic: "Domestic", international: "International" };
@@ -108,16 +110,14 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     : `<td class="symbol-cell"><button class="symbol-link" data-action="info" title="View ${escHtml(symbol)} info">${escHtml(symbol)}</button></td>`;
 
   const dr = (!isCash && entry.dividendRate > 0) ? entry.dividendRate : null;
-  const dividendCell = dr !== null
-    ? `<td class="align-right">${dr.toFixed(2)}%</td>`
-    : `<td class="align-right dim">—</td>`;
+  const dividendValueHtml = dr !== null ? `${dr.toFixed(2)}%` : `<span class="dim">—</span>`;
 
   tr.innerHTML = `
     ${symbolCell}
     <td class="align-right">${shares.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td>
     <td>${originTxt ? originTxt : '<span class="dim">—</span>'}</td>
     <td>${typeTxt   ? typeTxt   : '<span class="dim">—</span>'}</td>
-    ${dividendCell}
+    <td class="align-right dividend-edit-cell">${dividendValueHtml}${isCash ? "" : ` <button class="icon-btn dividend-edit-btn" title="Edit dividend rate">&#9998;</button>`}</td>
     ${priceCell}
     ${valueCell}
   `;
@@ -126,9 +126,39 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     tr.querySelector("[data-action='info']")?.addEventListener("click", () =>
       showStockInfo(symbol)
     );
+    tr.querySelector(".dividend-edit-btn")?.addEventListener("click", () =>
+      showDividendModal(symbol, entry.dividendRate)
+    );
   }
 
   return tr;
+}
+
+function showDividendModal(symbol, currentRate) {
+  const el = document.createElement("div");
+  el.className = "holding-form";
+  el.innerHTML = `
+    <h3>Dividend Rate — ${escHtml(symbol)}</h3>
+    <div class="form-group">
+      <label for="div-rate-input">Annual Dividend Rate (%)</label>
+      <input id="div-rate-input" type="number" class="form-input" placeholder="e.g. 3.5"
+        min="0" step="0.01" value="${currentRate != null && currentRate > 0 ? currentRate : ""}">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" id="div-cancel">Cancel</button>
+      <button class="btn btn-primary" id="div-save">Save</button>
+    </div>
+  `;
+  const input = el.querySelector("#div-rate-input");
+  el.querySelector("#div-cancel").addEventListener("click", () => Modal.close());
+  el.querySelector("#div-save").addEventListener("click", () => {
+    const raw = input.value.trim();
+    const rate = raw !== "" ? parseFloat(raw) : undefined;
+    updateDividendBySymbol(symbol, rate);
+    Modal.close();
+  });
+  Modal.open(el);
+  setTimeout(() => input.focus(), 50);
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
