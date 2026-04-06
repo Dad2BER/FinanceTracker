@@ -50,13 +50,14 @@ def init_db():
             created_at      TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS holdings (
-            id          TEXT PRIMARY KEY,
-            account_id  TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-            symbol      TEXT NOT NULL,
-            shares      REAL NOT NULL,
-            origin      TEXT,
-            asset_type  TEXT,
-            sort_order  INTEGER NOT NULL DEFAULT 0
+            id             TEXT PRIMARY KEY,
+            account_id     TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            symbol         TEXT NOT NULL,
+            shares         REAL NOT NULL,
+            origin         TEXT,
+            asset_type     TEXT,
+            sort_order     INTEGER NOT NULL DEFAULT 0,
+            dividend_rate  REAL
         );
         CREATE TABLE IF NOT EXISTS categories (
             id   TEXT PRIMARY KEY,
@@ -132,6 +133,13 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Add dividend_rate to holdings
+    try:
+        con.execute("ALTER TABLE holdings ADD COLUMN dividend_rate REAL")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     # ── Data migrations ────────────────────────────────────────────────────────
     # Rename account_type 'liability' → 'ledger'
     con.execute("UPDATE accounts SET account_type = 'ledger' WHERE account_type = 'liability'")
@@ -183,6 +191,8 @@ def load_state(profile_id):
                 holding["origin"] = h["origin"]
             if h["asset_type"]:
                 holding["assetType"] = h["asset_type"]
+            if h["dividend_rate"] is not None:
+                holding["dividendRate"] = h["dividend_rate"]
             holdings.append(holding)
 
         tx_rows = con.execute(
@@ -355,8 +365,8 @@ def save_state(data, profile_id):
                 for idx, h in enumerate(acc.get("holdings", [])):
                     con.execute(
                         "INSERT INTO holdings "
-                        "(id, account_id, symbol, shares, origin, asset_type, sort_order) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "(id, account_id, symbol, shares, origin, asset_type, sort_order, dividend_rate) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             h["id"],
                             acc["id"],
@@ -365,6 +375,7 @@ def save_state(data, profile_id):
                             h.get("origin"),
                             h.get("assetType"),
                             idx,
+                            h.get("dividendRate"),
                         )
                     )
                 for t in acc.get("transactions", []):
