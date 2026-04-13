@@ -159,7 +159,9 @@ export function renderHoldingList(
     // Columns: Symbol, Shares, Origin, Type, Dividend, Price, Value, Actions
     attachTableFilter(
       tableWrapper.querySelector("table"),
-      [true, false, true, true, false, false, false, false]
+      [true, false, true, true, false, false, false, false],
+      {},
+      container
     );
 
     container.appendChild(tableWrapper);

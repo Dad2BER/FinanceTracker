@@ -312,7 +312,9 @@ export function renderAssetsView(
   // Columns: Symbol, Shares, Origin, Type, Dividend, Price, Value
   attachTableFilter(
     tableWrapper.querySelector("table"),
-    [true, false, true, true, false, false, false]
+    [true, false, true, true, false, false, false],
+    {},
+    container
   );
 
   // ── Visible-row value sum in the filter row's Value cell ─────────────────────

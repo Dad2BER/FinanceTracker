@@ -16,8 +16,19 @@
  *     { categoryCol: number, subcategoryCol: number, categories: Array }
  *   When the category select changes, the subcategory select is rebuilt to
  *   show only that category's subcategories (or all if nothing selected).
+ *
+ * @param {HTMLElement|null} [stateKey]
+ *   Optional stable DOM element to key filter state against (typically the
+ *   page container). When provided, filter values are saved on every input
+ *   event and restored on the next call with the same key, so filters
+ *   survive same-page re-renders (e.g. after editing a row).
+ *   Call clearFilterState(stateKey) to reset on explicit navigation.
  */
-export function attachTableFilter(table, descriptors, links = {}) {
+
+// Module-level store: container element → { values: Array }
+const _filterState = new WeakMap();
+
+export function attachTableFilter(table, descriptors, links = {}, stateKey = null) {
   const thead = table.querySelector("thead");
   const tbody = table.querySelector("tbody");
 
@@ -137,6 +148,85 @@ export function attachTableFilter(table, descriptors, links = {}) {
 
   filterRow.addEventListener("input", applyFilters);
   filterRow.addEventListener("change", applyFilters);
+
+  // ── Filter state persistence ────────────────────────────────────────────────
+  if (stateKey) {
+    // Save current filter values to WeakMap on every user input
+    function saveState() {
+      const values = descriptors.map((desc, i) => {
+        const type = normalizeType(desc);
+        const th = filterRow.querySelectorAll("th")[i];
+        if (type === "text")      return th?.querySelector("input")?.value ?? "";
+        if (type === "daterange") {
+          const ins = th?.querySelectorAll("input") ?? [];
+          return [ins[0]?.value ?? "", ins[1]?.value ?? ""];
+        }
+        if (type === "select")    return th?.querySelector("select")?.value ?? "";
+        return null;
+      });
+      _filterState.set(stateKey, { values });
+    }
+    filterRow.addEventListener("input",  saveState);
+    filterRow.addEventListener("change", saveState);
+
+    // Restore previously saved values (if any)
+    const saved = _filterState.get(stateKey);
+    if (saved) {
+      // Restore function: sets values for all columns except `skip`
+      function restoreState(skip = -1) {
+        saved.values.forEach((val, i) => {
+          if (i === skip || val === null || val === undefined) return;
+          const type = normalizeType(descriptors[i]);
+          const th = filterRow.querySelectorAll("th")[i];
+          if (!th) return;
+          if (type === "text") {
+            const input = th.querySelector("input");
+            if (input) input.value = val;
+          } else if (type === "daterange") {
+            const inputs = th.querySelectorAll("input");
+            if (inputs[0]) inputs[0].value = val[0] ?? "";
+            if (inputs[1]) inputs[1].value = val[1] ?? "";
+          } else if (type === "select") {
+            const select = th.querySelector("select");
+            if (select && [...select.options].some(o => o.value === val)) {
+              select.value = val;
+            }
+          }
+        });
+      }
+
+      const subIdx = links.subcategoryCol ?? -1;
+
+      // Phase 1: restore everything except the subcategory column
+      restoreState(subIdx);
+
+      // Phase 2: if there's a category↔subcategory linkage, fire change on the
+      // category select to rebuild subcategory options, then restore subcategory
+      if (links.categoryCol !== undefined && links.subcategoryCol !== undefined) {
+        const catSelect = selects[links.categoryCol];
+        if (catSelect && saved.values[links.categoryCol]) {
+          catSelect.dispatchEvent(new Event("change")); // rebuilds subcategory options
+          // Now restore only the subcategory value
+          const subVal = saved.values[subIdx];
+          const subSelect = selects[subIdx];
+          if (subSelect && subVal && [...subSelect.options].some(o => o.value === subVal)) {
+            subSelect.value = subVal;
+          }
+        }
+      }
+
+      // Re-apply filtering immediately; bubbling also triggers assetsView's visible sum
+      filterRow.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+}
+
+/**
+ * Clears the saved filter state for a given container element.
+ * Call this in navigateTo() so filter state resets when the user navigates away.
+ */
+export function clearFilterState(stateKey) {
+  if (stateKey) _filterState.delete(stateKey);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

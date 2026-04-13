@@ -204,7 +204,8 @@ export function renderTransactionList(container, account, categories, payees, on
       categoryCol: 2,
       subcategoryCol: 3,
       categories,
-    }
+    },
+    container
   );
 
   container.appendChild(tableWrapper);

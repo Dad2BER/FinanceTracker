@@ -19,6 +19,7 @@ import { renderHistoricReturnsView } from "./components/retirement/historicRetur
 import { renderHistoricSimulationView } from "./components/retirement/historicSimulationView.js";
 import { renderMonteCarloView } from "./components/retirement/monteCarloView.js";
 import { renderWithdrawalStrategiesView } from "./components/retirement/withdrawalStrategiesView.js";
+import { clearFilterState } from "./utils/tableFilter.js";
 
 // ── Tab / Page Definitions ─────────────────────────────────────────────────────
 const TABS = [
@@ -519,6 +520,7 @@ function render() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function navigateTo(newView) {
+  clearFilterState(shellContent);
   view = newView;
   prices = null;
   quoteDetails = {};
