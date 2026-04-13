@@ -631,8 +631,8 @@ async function loadDividendRates() {
   }));
   for (const { accountId, holding } of allHoldings) {
     const dps = rateMap[holding.symbol];
-    // Only update if API returned a non-zero value; never overwrite a user-set value with 0
-    if (dps > 0) {
+    // Only fill in the dividend if the user hasn't already set one
+    if (dps > 0 && !(holding.dividendPerShare > 0)) {
       updateHoldingDividend(accountId, holding.id, dps);
     }
   }
