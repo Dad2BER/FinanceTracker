@@ -152,7 +152,7 @@ export function attachTableFilter(table, descriptors, links = {}, stateKey = nul
   // ── Filter state persistence ────────────────────────────────────────────────
   if (stateKey) {
     // Save current filter values to WeakMap on every user input
-    function saveState() {
+    const saveState = () => {
       const values = descriptors.map((desc, i) => {
         const type = normalizeType(desc);
         const th = filterRow.querySelectorAll("th")[i];
@@ -165,7 +165,7 @@ export function attachTableFilter(table, descriptors, links = {}, stateKey = nul
         return null;
       });
       _filterState.set(stateKey, { values });
-    }
+    };
     filterRow.addEventListener("input",  saveState);
     filterRow.addEventListener("change", saveState);
 
@@ -173,7 +173,7 @@ export function attachTableFilter(table, descriptors, links = {}, stateKey = nul
     const saved = _filterState.get(stateKey);
     if (saved) {
       // Restore function: sets values for all columns except `skip`
-      function restoreState(skip = -1) {
+      const restoreState = (skip = -1) => {
         saved.values.forEach((val, i) => {
           if (i === skip || val === null || val === undefined) return;
           const type = normalizeType(descriptors[i]);
@@ -193,7 +193,7 @@ export function attachTableFilter(table, descriptors, links = {}, stateKey = nul
             }
           }
         });
-      }
+      };
 
       const subIdx = links.subcategoryCol ?? -1;
 
