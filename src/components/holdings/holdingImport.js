@@ -11,34 +11,27 @@ function escHtml(str) {
 
 function parseCSV(text) {
   const rows = [];
-  for (const line of text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
-    if (line.trim()) rows.push(parseCSVLine(line));
-  }
-  return rows;
-}
-
-function parseCSVLine(line) {
-  const fields = [];
-  let i = 0;
-  while (i < line.length) {
-    if (line[i] === '"') {
-      i++;
-      let field = "";
-      while (i < line.length) {
-        if (line[i] === '"' && line[i + 1] === '"') { field += '"'; i += 2; }
-        else if (line[i] === '"') { i++; break; }
-        else { field += line[i++]; }
-      }
-      fields.push(field);
-      if (i < line.length && line[i] === ",") i++;
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  let row = [], field = "", inQuote = false, i = 0;
+  while (i < src.length) {
+    const ch = src[i];
+    if (inQuote) {
+      if (ch === '"' && src[i + 1] === '"') { field += '"'; i += 2; }
+      else if (ch === '"')                   { inQuote = false; i++; }
+      else                                   { field += ch; i++; }
     } else {
-      const start = i;
-      while (i < line.length && line[i] !== ",") i++;
-      fields.push(line.slice(start, i).trim());
-      if (i < line.length) i++;
+      if      (ch === '"')  { inQuote = true; i++; }
+      else if (ch === ',')  { row.push(field.trim()); field = ""; i++; }
+      else if (ch === '\n') {
+        row.push(field.trim()); field = "";
+        if (row.some(c => c !== "")) rows.push(row);
+        row = []; i++;
+      } else { field += ch; i++; }
     }
   }
-  return fields;
+  row.push(field.trim());
+  if (row.some(c => c !== "")) rows.push(row);
+  return rows;
 }
 
 function autoDetectColumns(headers) {
