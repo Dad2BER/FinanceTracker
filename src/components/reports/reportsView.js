@@ -10,6 +10,7 @@ const PALETTE = [
 // ── Persisted state across navigations ────────────────────────────────────────
 let _reportMode = "ytd";   // "ytd" | "last12"
 let _hiddenCats = new Set(); // categories toggled off by the user
+let _tagMode = false;        // when true, use tx.tag as top-level category
 
 function monthLabel(yyyyMM) {
   const [y, m] = yyyyMM.split("-");
@@ -88,8 +89,24 @@ export function renderReportsView(container, accounts, categories, onBack) {
   modeToggle.appendChild(ytdBtn);
   modeToggle.appendChild(l12Btn);
 
+  // Tag-mode checkbox
+  const tagModeLabel = document.createElement("label");
+  tagModeLabel.className = "checkbox-label";
+  tagModeLabel.style.cssText = "align-self:center;font-size:0.85rem;cursor:pointer;user-select:none;margin-left:auto";
+  const tagModeCb = document.createElement("input");
+  tagModeCb.type = "checkbox";
+  tagModeCb.checked = _tagMode;
+  tagModeCb.addEventListener("change", () => {
+    _tagMode = tagModeCb.checked;
+    _hiddenCats.clear();   // category names change when mode flips
+    rerender();
+  });
+  tagModeLabel.appendChild(tagModeCb);
+  tagModeLabel.appendChild(document.createTextNode("\u00a0Treat Tag as Category"));
+
   titleRow.appendChild(leftGroup);
   titleRow.appendChild(modeToggle);
+  titleRow.appendChild(tagModeLabel);
   header.appendChild(titleRow);
   container.appendChild(header);
 
@@ -158,8 +175,8 @@ export function renderReportsView(container, accounts, categories, onBack) {
       txs.push({
         month,
         amount: tx.amount,
-        cat: catName || "Uncategorized",
-        subcat: subcatName || "Other",
+        cat: _tagMode ? (tx.tag || "Untagged") : (catName || "Uncategorized"),
+        subcat: _tagMode ? (catName || "Uncategorized") : (subcatName || "Other"),
       });
     });
   });
@@ -433,7 +450,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
   legendHeader.className = "report-legend-header";
   const legendTitle = document.createElement("span");
   legendTitle.className = "report-legend-title";
-  legendTitle.textContent = "Categories";
+  legendTitle.textContent = _tagMode ? "Tags" : "Categories";
   legendHeader.appendChild(legendTitle);
 
   // "Show all" link — only visible when at least one category is hidden
