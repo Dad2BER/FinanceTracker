@@ -175,8 +175,8 @@ export function renderReportsView(container, accounts, categories, onBack) {
       txs.push({
         month,
         amount: tx.amount,
-        cat: _tagMode ? (tx.tag || "Untagged") : (catName || "Uncategorized"),
-        subcat: _tagMode ? (catName || "Uncategorized") : (subcatName || "Other"),
+        cat: _tagMode ? (tx.tag || catName || "Uncategorized") : (catName || "Uncategorized"),
+        subcat: subcatName || "Other",
       });
     });
   });
