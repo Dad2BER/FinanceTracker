@@ -9,6 +9,11 @@ function fmtShortDate(iso) {
   return new Date(+y, +m - 1, +d).toLocaleString("en-US", { month: "short", day: "numeric", year: "2-digit" });
 }
 
+function fmtFullDate(iso) {
+  const [y, m, d] = iso.split("-");
+  return new Date(+y, +m - 1, +d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 function makeFmtValue(range) {
   const step = range / 2;
   if (step >= 1_000_000) return v => "$" + (v / 1_000_000).toFixed(1) + "M";
@@ -17,6 +22,10 @@ function makeFmtValue(range) {
   if (step >= 1_000)     return v => "$" + Math.round(v / 1_000) + "K";
   if (step >= 100)       return v => "$" + (v / 1_000).toFixed(1) + "K";
   return v => "$" + Math.round(v);
+}
+
+function fmtDollars(v) {
+  return v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
 /**
@@ -118,6 +127,102 @@ export function createNetWorthChart(points) {
     lbl.textContent = fmtShortDate(points[i].date);
     svg.appendChild(lbl);
   });
+
+  // ── Hover layer ──────────────────────────────────────────────────────────────
+  const hoverLine = svgEl("line", {
+    x1: 0, y1: pad.top, x2: 0, y2: pad.top + chartH,
+    stroke: "var(--color-text-dim)", "stroke-width": "1",
+    "stroke-dasharray": "3 2",
+    opacity: "0",
+  });
+  svg.appendChild(hoverLine);
+
+  const hoverDot = svgEl("circle", {
+    cx: 0, cy: 0, r: "4",
+    fill: "var(--color-primary)",
+    stroke: "var(--color-bg, #fff)", "stroke-width": "2",
+    opacity: "0",
+  });
+  svg.appendChild(hoverDot);
+
+  // Tooltip group
+  const TIP_W = 110, TIP_H = 32, TIP_R = 4;
+  const tipGroup = svgEl("g", { opacity: "0", "pointer-events": "none" });
+  const tipRect = svgEl("rect", {
+    width: TIP_W, height: TIP_H, rx: TIP_R, ry: TIP_R,
+    fill: "var(--color-surface, #1e2227)",
+    stroke: "var(--color-border)", "stroke-width": "1",
+  });
+  const tipDate = svgEl("text", {
+    x: TIP_W / 2, y: 12,
+    "text-anchor": "middle",
+    fill: "var(--color-text-dim)",
+    "font-size": "8",
+    "font-family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  });
+  const tipValue = svgEl("text", {
+    x: TIP_W / 2, y: 24,
+    "text-anchor": "middle",
+    fill: "var(--color-text, #e8eaf0)",
+    "font-size": "10",
+    "font-weight": "600",
+    "font-family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  });
+  tipGroup.appendChild(tipRect);
+  tipGroup.appendChild(tipDate);
+  tipGroup.appendChild(tipValue);
+  svg.appendChild(tipGroup);
+
+  // Invisible hit area
+  const hitArea = svgEl("rect", {
+    x: pad.left, y: pad.top,
+    width: chartW, height: chartH,
+    fill: "transparent",
+    cursor: "crosshair",
+  });
+  svg.appendChild(hitArea);
+
+  function onMove(e) {
+    const rect = svg.getBoundingClientRect();
+    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    const chartX = Math.max(0, Math.min(chartW, svgX - pad.left));
+
+    // Snap to nearest point
+    const rawIdx = (chartX / chartW) * (n - 1);
+    const idx = Math.max(0, Math.min(n - 1, Math.round(rawIdx)));
+    const pt = points[idx];
+    const cx = xOf(idx);
+    const cy = yOf(pt.value);
+
+    hoverLine.setAttribute("x1", cx.toFixed(1));
+    hoverLine.setAttribute("x2", cx.toFixed(1));
+    hoverLine.setAttribute("opacity", "1");
+
+    hoverDot.setAttribute("cx", cx.toFixed(1));
+    hoverDot.setAttribute("cy", cy.toFixed(1));
+    hoverDot.setAttribute("opacity", "1");
+
+    tipDate.textContent = fmtFullDate(pt.date);
+    tipValue.textContent = fmtDollars(pt.value);
+
+    // Position tooltip: prefer above the dot, flip sides near edges
+    let tx = cx - TIP_W / 2;
+    if (tx < pad.left) tx = pad.left;
+    if (tx + TIP_W > W - pad.right) tx = W - pad.right - TIP_W;
+    const ty = cy - TIP_H - 8 < pad.top ? cy + 10 : cy - TIP_H - 8;
+
+    tipGroup.setAttribute("transform", `translate(${tx.toFixed(1)},${ty.toFixed(1)})`);
+    tipGroup.setAttribute("opacity", "1");
+  }
+
+  function onLeave() {
+    hoverLine.setAttribute("opacity", "0");
+    hoverDot.setAttribute("opacity", "0");
+    tipGroup.setAttribute("opacity", "0");
+  }
+
+  hitArea.addEventListener("mousemove", onMove);
+  hitArea.addEventListener("mouseleave", onLeave);
 
   return svg;
 }

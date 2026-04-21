@@ -572,13 +572,13 @@ async function loadPrices(symbols) {
     prices = result.prices;
     quoteDetails = result.quoteDetails ?? {};
     pricesLoading = false;
-    render();
     recordDailyValues();
+    render();
     if (result.needsManualEntry.length > 0) {
       showManualPriceModal(result.needsManualEntry, (entered) => {
         prices = { ...prices, ...entered };
-        render();
         recordDailyValues();
+        render();
       });
     }
   } catch (e) {
