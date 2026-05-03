@@ -19,6 +19,7 @@ import { renderHistoricReturnsView } from "./components/retirement/historicRetur
 import { renderHistoricSimulationView } from "./components/retirement/historicSimulationView.js";
 import { renderMonteCarloView } from "./components/retirement/monteCarloView.js";
 import { renderWithdrawalStrategiesView } from "./components/retirement/withdrawalStrategiesView.js";
+import { renderBudgetEstView } from "./components/retirement/budgetEstView.js";
 import { clearFilterState } from "./utils/tableFilter.js";
 
 // ── Tab / Page Definitions ─────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ const TAB_PAGES = {
     { id: "subcat-spend",  label: "Subcategory Spend" },
   ],
   retirement: [
+    { id: "ret-budget-est",  label: "Budget Est." },
     { id: "ret-inputs",      label: "Inputs" },
     { id: "ret-simulation",  label: "Simple Simulation" },
     { id: "ret-historic-sim",label: "Historic Simulation" },
@@ -60,6 +62,7 @@ const PAGE_TO_SIDEBAR = {
   "ret-historic-sim": "ret-historic-sim",
   "ret-monte-carlo":  "ret-monte-carlo",
   "ret-strategies":   "ret-strategies",
+  "ret-budget-est":   "ret-budget-est",
   "ret-historic":     "ret-historic",
 };
 
@@ -467,6 +470,8 @@ function render() {
       renderMonteCarloView(shellContent);
     } else if (view.page === "ret-strategies") {
       renderWithdrawalStrategiesView(shellContent);
+    } else if (view.page === "ret-budget-est") {
+      renderBudgetEstView(shellContent);
     } else if (view.page === "ret-historic") {
       renderHistoricReturnsView(shellContent);
     } else {

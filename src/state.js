@@ -5,7 +5,8 @@ import { generateId } from "./utils/uuid.js";
 let _data = { accounts: [], categories: [], payees: [] };
 let _profileId = null;  // set by initState; passed to saveData on every mutation
 
-const RET_INPUTS_PREFIX = "financetracker_ret_";
+const RET_INPUTS_PREFIX    = "financetracker_ret_";
+const BUDGET_EST_PREFIX    = "financetracker_budget_est_";
 
 export function initState(data, profileId) {
   _profileId = profileId;
@@ -13,7 +14,8 @@ export function initState(data, profileId) {
     accounts:          Array.isArray(data?.accounts)   ? data.accounts   : [],
     categories:        Array.isArray(data?.categories) ? data.categories : [],
     payees:            Array.isArray(data?.payees)     ? data.payees     : [],
-    retirementInputs:  data?.retirementInputs ?? null,
+    retirementInputs:  data?.retirementInputs  ?? null,
+    budgetEstInputs:   data?.budgetEstInputs   ?? null,
   };
 }
 let _listeners = [];
@@ -56,6 +58,36 @@ export function getRetirementInputsFromStorage(profileId) {
   if (!id) return null;
   try {
     const raw = window.localStorage.getItem(RET_INPUTS_PREFIX + id);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Budget Estimator Inputs ───────────────────────────────────────────────────
+
+export function getBudgetEstInputs() {
+  return _data.budgetEstInputs ?? null;
+}
+
+export function flushBudgetEstInputs(inputs) {
+  try {
+    if (_profileId) {
+      window.localStorage.setItem(BUDGET_EST_PREFIX + _profileId, JSON.stringify(inputs));
+    }
+  } catch (e) { /* quota or private mode */ }
+}
+
+export function saveBudgetEstInputs(inputs) {
+  _data = { ..._data, budgetEstInputs: inputs };
+  flushBudgetEstInputs(inputs);
+  saveData(_data, _profileId);
+}
+
+export function getBudgetEstInputsFromStorage() {
+  if (!_profileId) return null;
+  try {
+    const raw = window.localStorage.getItem(BUDGET_EST_PREFIX + _profileId);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;

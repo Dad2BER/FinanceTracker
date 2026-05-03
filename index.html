@@ -1765,6 +1765,75 @@
     .mc-stats-note { margin-bottom: 1rem; }
     .mc-chart-wrap { min-height: 340px; }
 
+    /* ── Budget Estimator ────────────────────────────────────────────────────── */
+    .budget-est-page {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    .budget-est-left  { display: flex; flex-direction: column; gap: 1.25rem; }
+    .budget-est-right { display: flex; flex-direction: column; gap: 1.25rem; }
+    .be-result-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .be-result-row:last-of-type { border-bottom: none; }
+    .be-result-label {
+      font-size: 0.78rem;
+      color: var(--color-text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .be-result-val {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--color-text);
+      line-height: 1.2;
+    }
+    .be-result-val.be-negative { color: var(--color-danger); }
+    .be-na { font-size: 1.1rem; color: var(--color-text-dim); }
+    .be-result-note { font-size: 0.75rem; color: var(--color-text-dim); margin-top: 0.15rem; }
+    .be-assumptions {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--color-border);
+    }
+    .be-assumptions-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--color-text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+    .be-assump-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.2rem 1rem;
+      font-size: 0.8rem;
+    }
+    .be-assump-key { color: var(--color-text-dim); }
+    .be-assump-val { color: var(--color-text); font-weight: 500; }
+    .be-reset-btn {
+      font-size: 0.72rem;
+      padding: 0.2rem 0.55rem;
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      color: var(--color-text-dim);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .be-reset-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    @media (max-width: 900px) {
+      .budget-est-page { grid-template-columns: 1fr; }
+    }
+
     /* ── Withdrawal Strategies ───────────────────────────────────────────────── */
     .strat-desc-grid {
       display: grid;
