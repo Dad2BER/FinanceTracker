@@ -223,10 +223,10 @@ export function makeNetWorthCard(accounts, prices, isLoading) {
   card.className = "summary-card nw-chart-card";
 
   const title = document.createElement("h3");
-  title.textContent = "NET WORTH OVER TIME";
   card.appendChild(title);
 
   if (isLoading) {
+    title.textContent = "NET WORTH OVER TIME";
     const loadRow = document.createElement("div");
     loadRow.className = "chart-loading";
     loadRow.appendChild(createLoadingSpinner());
@@ -238,6 +238,11 @@ export function makeNetWorthCard(accounts, prices, isLoading) {
   }
 
   const points = aggregateNetWorth(accounts, prices);
+  const lastVal = points.length ? points[points.length - 1].value : null;
+  const valStr = lastVal !== null
+    ? lastVal.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : "";
+  title.textContent = valStr ? `NET WORTH OVER TIME:  ${valStr}` : "NET WORTH OVER TIME";
   card.appendChild(createNetWorthChart(points));
   return card;
 }

@@ -14,14 +14,54 @@ function fmtFullDate(iso) {
   return new Date(+y, +m - 1, +d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function makeFmtValue(range) {
-  const step = range / 2;
-  if (step >= 1_000_000) return v => "$" + (v / 1_000_000).toFixed(1) + "M";
-  if (step >= 100_000)   return v => "$" + (v / 1_000_000).toFixed(2) + "M";
-  if (step >= 10_000)    return v => "$" + (v / 1_000_000).toFixed(3) + "M";
-  if (step >= 1_000)     return v => "$" + Math.round(v / 1_000) + "K";
-  if (step >= 100)       return v => "$" + (v / 1_000).toFixed(1) + "K";
+function formatDecimals(step, unit) {
+  let val = step / unit;
+  let d = 0;
+  while (val % 1 > 1e-9 && d < 4) { val *= 10; d++; }
+  return d;
+}
+
+function makeFmtValue(step) {
+  if (step >= 100_000) {
+    const d = formatDecimals(step, 1_000_000);
+    return v => "$" + (v / 1_000_000).toFixed(d) + "M";
+  }
+  if (step >= 100) {
+    const d = formatDecimals(step, 1_000);
+    return v => "$" + (v / 1_000).toFixed(d) + "K";
+  }
   return v => "$" + Math.round(v);
+}
+
+function niceScale(minVal, maxVal, targetTicks = 4) {
+  if (minVal === maxVal) {
+    const pad = minVal * 0.001 || 1;
+    minVal -= pad;
+    maxVal += pad;
+  }
+  const range = maxVal - minVal;
+  const roughStep = range / (targetTicks - 1);
+  const mag = Math.pow(10, Math.floor(Math.log10(roughStep)));
+  const norm = roughStep / mag;
+
+  let niceMult;
+  if (norm <= 1.5)  niceMult = 1;
+  else if (norm <= 2.25) niceMult = 2;
+  else if (norm <= 3.5)  niceMult = 2.5;
+  else if (norm <= 7)    niceMult = 5;
+  else niceMult = 10;
+
+  const step = niceMult * mag;
+  const niceMin = Math.floor(minVal / step) * step;
+  const niceMax = Math.ceil(maxVal / step) * step;
+
+  const ticks = [];
+  let v = niceMin;
+  while (v <= niceMax + step * 1e-9) {
+    ticks.push(Math.round(v / step) * step);
+    v += step;
+  }
+  return ticks;
 }
 
 function fmtDollars(v) {
@@ -56,16 +96,24 @@ export function createNetWorthChart(points) {
   const vals = points.map(p => p.value);
   const minVal = Math.min(...vals);
   const maxVal = Math.max(...vals);
-  const range = maxVal - minVal || 1;
-  const fmtValue = makeFmtValue(range);
   const n = points.length;
 
-  const xOf = i => pad.left + (i / (n - 1)) * chartW;
-  const yOf = v => pad.top + chartH - ((v - minVal) / range) * chartH;
+  const ticks = niceScale(minVal, maxVal, 4);
+  const niceMin = ticks[0];
+  const niceMax = ticks[ticks.length - 1];
+  const niceRange = niceMax - niceMin || 1;
+  const tickStep = ticks.length > 1 ? ticks[1] - ticks[0] : niceRange;
+  const fmtValue = makeFmtValue(tickStep);
 
-  // Horizontal grid lines + y-axis labels (3 levels)
-  for (let i = 0; i <= 2; i++) {
-    const v = minVal + (range * i) / 2;
+  const trendColor = points[n - 1].value < points[0].value
+    ? "var(--color-danger, #ef4444)"
+    : "var(--color-primary)";
+
+  const xOf = i => pad.left + (i / (n - 1)) * chartW;
+  const yOf = v => pad.top + chartH - ((v - niceMin) / niceRange) * chartH;
+
+  // Horizontal grid lines + y-axis labels at nice round values
+  for (const v of ticks) {
     const y = yOf(v);
     svg.appendChild(svgEl("line", {
       x1: pad.left, y1: y, x2: pad.left + chartW, y2: y,
@@ -88,7 +136,7 @@ export function createNetWorthChart(points) {
     ` L ${xOf(n - 1).toFixed(1)},${(pad.top + chartH).toFixed(1)} Z`;
   svg.appendChild(svgEl("path", {
     d: areaD,
-    fill: "var(--color-primary)",
+    fill: trendColor,
     opacity: "0.12",
   }));
 
@@ -99,7 +147,7 @@ export function createNetWorthChart(points) {
   svg.appendChild(svgEl("path", {
     d: lineD,
     fill: "none",
-    stroke: "var(--color-primary)",
+    stroke: trendColor,
     "stroke-width": "1.75",
     "stroke-linejoin": "round",
     "stroke-linecap": "round",
@@ -110,7 +158,7 @@ export function createNetWorthChart(points) {
     cx: xOf(n - 1).toFixed(1),
     cy: yOf(points[n - 1].value).toFixed(1),
     r: "3",
-    fill: "var(--color-primary)",
+    fill: trendColor,
   }));
 
   // X-axis date labels (first, middle, last)
@@ -139,7 +187,7 @@ export function createNetWorthChart(points) {
 
   const hoverDot = svgEl("circle", {
     cx: 0, cy: 0, r: "4",
-    fill: "var(--color-primary)",
+    fill: trendColor,
     stroke: "var(--color-bg, #fff)", "stroke-width": "2",
     opacity: "0",
   });
@@ -221,8 +269,16 @@ export function createNetWorthChart(points) {
     tipGroup.setAttribute("opacity", "0");
   }
 
+  function onTouch(e) {
+    if (e.touches.length === 0) return;
+    e.preventDefault();
+    onMove(e.touches[0]);
+  }
+
   hitArea.addEventListener("mousemove", onMove);
   hitArea.addEventListener("mouseleave", onLeave);
+  hitArea.addEventListener("touchmove", onTouch, { passive: false });
+  hitArea.addEventListener("touchend", onLeave);
 
   return svg;
 }
