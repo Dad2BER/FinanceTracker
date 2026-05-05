@@ -24,9 +24,9 @@ import { clearFilterState } from "./utils/tableFilter.js";
 
 // ── Tab / Page Definitions ─────────────────────────────────────────────────────
 const TABS = [
-  { id: "finances",   label: "Finances" },
-  { id: "reports",    label: "Reports" },
-  { id: "retirement", label: "Retirement" },
+  { id: "finances",   label: "Accounts" },
+  { id: "reports",    label: "Budget" },
+  { id: "retirement", label: "Simulations" },
 ];
 
 const TAB_PAGES = {
@@ -37,9 +37,9 @@ const TAB_PAGES = {
   reports:    [
     { id: "ytd-spending",  label: "Monthly Spend" },
     { id: "subcat-spend",  label: "Subcategory Spend" },
+    { id: "ret-budget-est",  label: "Budget Est." },
   ],
   retirement: [
-    { id: "ret-budget-est",  label: "Budget Est." },
     { id: "ret-inputs",      label: "Inputs" },
     { id: "ret-simulation",  label: "Simple Simulation" },
     { id: "ret-historic-sim",label: "Historic Simulation" },
@@ -458,6 +458,8 @@ function render() {
     const _reportOnBack     = () => navigateTo({ tab: "finances", page: "summary" });
     if (view.page === "subcat-spend") {
       renderSubcatSpendView(shellContent, _reportAccounts, _reportCategories, _reportOnBack, getPayees());
+    } else if (view.page === "ret-budget-est") {
+      renderBudgetEstView(shellContent);
     } else {
       renderReportsView(shellContent, _reportAccounts, _reportCategories, _reportOnBack);
     }
@@ -470,8 +472,6 @@ function render() {
       renderMonteCarloView(shellContent);
     } else if (view.page === "ret-strategies") {
       renderWithdrawalStrategiesView(shellContent);
-    } else if (view.page === "ret-budget-est") {
-      renderBudgetEstView(shellContent);
     } else if (view.page === "ret-historic") {
       renderHistoricReturnsView(shellContent);
     } else {

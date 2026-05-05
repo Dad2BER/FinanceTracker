@@ -6,7 +6,7 @@ const PALETTE = [
   "#fd9644", "#2bcbba", "#a29bfe", "#fd79a8", "#00b4d8",
 ];
 
-const MAX_PAYEES_FOR_STACK = 10;
+const TOP_N = 7;
 
 // ── Persisted state across navigations ────────────────────────────────────────
 let _subcatMode      = "ytd"; // "ytd" | "last12"
@@ -245,9 +245,12 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     .sort((a, b) => b[1] - a[1])
     .map(([name]) => name);
 
-  // In "all" mode always stack (subcategories are few); otherwise respect the cap
-  const useStack = isAllMode || allLabels.length <= MAX_PAYEES_FOR_STACK;
-  const labelColor = new Map(allLabels.map((l, i) => [l, PALETTE[i % PALETTE.length]]));
+  const topLabels = allLabels.slice(0, TOP_N);
+  const otherLabels = allLabels.slice(TOP_N);
+  const hasOther = otherLabels.length > 0;
+  const displayLabels = hasOther ? [...topLabels, "Other"] : topLabels;
+  const labelColor = new Map(topLabels.map((l, i) => [l, PALETTE[i % PALETTE.length]]));
+  if (hasOther) labelColor.set("Other", "#718096");
 
   // ── Month → label → total ────────────────────────────────────────────────────
   const monthMap = new Map();
@@ -260,15 +263,17 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   const chartData = months.map(month => {
     const pm = monthMap.get(month) || new Map();
     let total = 0;
+    let otherTotal = 0;
     const segments = [];
-    if (useStack) {
-      allLabels.forEach(label => {
-        const v = pm.get(label) || 0;
-        if (v > 0) { segments.push({ label, v }); total += v; }
-      });
-    } else {
-      pm.forEach(v => { total += v; });
-    }
+    topLabels.forEach(label => {
+      const v = pm.get(label) || 0;
+      if (v > 0) { segments.push({ label, v }); total += v; }
+    });
+    otherLabels.forEach(label => {
+      const v = pm.get(label) || 0;
+      otherTotal += v; total += v;
+    });
+    if (otherTotal > 0) segments.push({ label: "Other", v: otherTotal });
     return { month, segments, total };
   });
 
@@ -293,7 +298,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
 
   function buildTooltipHTML(d) {
     let html = `<div class="rtt-month">${monthLabelFull(d.month)}</div>`;
-    if (useStack && d.segments.length > 0) {
+    if (d.segments.length > 0) {
       html += `<div class="rtt-divider"></div>`;
       d.segments.forEach(seg => {
         html += `
@@ -406,7 +411,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
       const isCurrent = d.month === currentMonthStr;
       const colGroup  = document.createElementNS(NS, "g");
 
-      if (useStack) {
+      {
         let yBase = cH;
         d.segments.forEach(seg => {
           const segH = (seg.v / yMax) * cH;
@@ -422,18 +427,6 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
           rect.addEventListener("mouseleave", hideTooltip);
           colGroup.appendChild(rect);
         });
-      } else if (d.total > 0) {
-        const barH = (d.total / yMax) * cH;
-        const rect = document.createElementNS(NS, "rect");
-        rect.setAttribute("x", x);       rect.setAttribute("y", cH - barH);
-        rect.setAttribute("width", barW); rect.setAttribute("height", barH);
-        rect.setAttribute("fill", PALETTE[0]);
-        rect.setAttribute("rx", 2);
-        if (isCurrent) rect.setAttribute("opacity", "0.7");
-        rect.style.cursor = "default";
-        rect.addEventListener("mouseenter", () => showTooltip(d, cx, cW));
-        rect.addEventListener("mouseleave", hideTooltip);
-        colGroup.appendChild(rect);
       }
 
       // Total label above bar
@@ -475,7 +468,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   ro.observe(svgWrap);
 
   // ── Legend ───────────────────────────────────────────────────────────────────
-  if (useStack && allLabels.length > 0) {
+  if (displayLabels.length > 0) {
     const legendWrap = document.createElement("div");
     legendWrap.className = "report-legend-wrap";
 
@@ -489,7 +482,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
 
     const legend = document.createElement("div");
     legend.className = "report-legend";
-    allLabels.forEach(label => {
+    displayLabels.forEach(label => {
       const item = document.createElement("div");
       item.className = "legend-item";
       item.innerHTML = `
@@ -500,12 +493,6 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     });
     legendWrap.appendChild(legend);
     section.appendChild(legendWrap);
-  } else if (!useStack) {
-    const note = document.createElement("p");
-    note.className = "dim";
-    note.style.cssText = "font-size:0.82rem;margin-top:0.5rem";
-    note.textContent = `${allLabels.length} payees — bars show monthly totals only (breakdown shown when 10 or fewer payees).`;
-    section.appendChild(note);
   }
 
   // ── Transaction Table ──────────────────────────────────────────────────────
