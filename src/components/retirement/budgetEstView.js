@@ -134,6 +134,7 @@ export function renderBudgetEstView(container) {
               <input id="be-ror" type="number" class="ret-num-input" step="0.1"
                      value="${_b.ror}" min="0" max="50" style="width:90px" />
               <span class="ret-unit">%</span>
+              <span class="be-ror-hint">assumes 3.0% inflation</span>
             </div>
           </div>
 
@@ -189,6 +190,14 @@ export function renderBudgetEstView(container) {
     const { transitionValue, monthlyBudget } = res;
     const alreadySS = _b.ssAge <= _b.age;
 
+    const preSSYears = _b.ssAge - _b.age;
+    const tvNominal = transitionValue !== null && preSSYears > 0
+      ? transitionValue * Math.pow(1.03, preSSYears)
+      : null;
+    const tvInflAdjDisplay = tvNominal !== null
+      ? `<div class="be-result-label be-infl-adj">${formatCurrency(tvNominal)} in future dollars</div>`
+      : "";
+
     const tvDisplay = alreadySS
       ? `<span class="be-na">N/A</span>`
       : transitionValue === null
@@ -212,6 +221,7 @@ export function renderBudgetEstView(container) {
         <div class="be-result-row">
           <div class="be-result-label">SS Transition End Value</div>
           <div>${tvDisplay}</div>
+          ${!alreadySS && transitionValue !== null ? tvInflAdjDisplay : ""}
           ${tvNote ? `<div class="be-result-note">${tvNote}</div>` : ""}
         </div>
 
