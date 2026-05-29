@@ -68,14 +68,22 @@ const ORIGIN_OPTS = [
   { value: "international",label: "International" },
 ];
 
-const ASSET_TYPE_OPTS = [
+const ASSET_CLASS_OPTS = [
   { value: "",            label: "—" },
-  { value: "stock-fund",  label: "Stock Fund" },
-  { value: "real-estate", label: "Real Estate" },
-  { value: "company",     label: "Company" },
-  { value: "crypto",      label: "Crypto" },
+  { value: "equity",      label: "Equity" },
   { value: "bonds",       label: "Bonds" },
+  { value: "real-estate", label: "Real Estate" },
+  { value: "crypto",      label: "Crypto" },
   { value: "cash",        label: "Cash" },
+];
+
+const INSTRUMENT_OPTS = [
+  { value: "",             label: "—" },
+  { value: "etf",          label: "ETF" },
+  { value: "fund",         label: "Fund" },
+  { value: "stock",        label: "Stock" },
+  { value: "cash",         label: "Cash" },
+  { value: "money-market", label: "Money Market" },
 ];
 
 function buildSelect(opts, initValue = "") {
@@ -281,12 +289,13 @@ export function showHoldingImportModal(account) {
         // Brand-new symbol
         const isCashLikely = row.rawQty === null && row.rawVal !== null;
         adds.push({
-          symbol:    row.symbol,
-          rawQty:    row.rawQty,
-          rawVal:    row.rawVal,
-          origin:    "",
-          assetType: isCashLikely ? "cash" : "",
-          skip:      false,
+          symbol:         row.symbol,
+          rawQty:         row.rawQty,
+          rawVal:         row.rawVal,
+          origin:         "",
+          assetType:      isCashLikely ? "cash" : "",
+          instrumentType: isCashLikely ? "cash" : "",
+          skip:           false,
         });
       }
     });
@@ -345,7 +354,8 @@ export function showHoldingImportModal(account) {
           <th>Symbol</th>
           <th class="align-right">Shares / Qty</th>
           <th>Origin</th>
-          <th>Asset Type</th>
+          <th>Asset Class</th>
+          <th>Instrument</th>
         </tr>
       </thead>
       <tbody id="hi-tbody"></tbody>
@@ -359,7 +369,7 @@ export function showHoldingImportModal(account) {
     function addSectionRow(label, cssClass, count) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 5;
+      td.colSpan = 6;
       td.className = `hi-section-header ${cssClass}`;
       td.textContent = label + ` (${count})`;
       tr.appendChild(td);
@@ -394,6 +404,9 @@ export function showHoldingImportModal(account) {
 
         const typeTd = document.createElement("td"); typeTd.className = "dim"; typeTd.style.fontSize = "0.85rem";
         typeTd.textContent = u.holding.assetType || "—"; tr.appendChild(typeTd);
+
+        const instrTd = document.createElement("td"); instrTd.className = "dim"; instrTd.style.fontSize = "0.85rem";
+        instrTd.textContent = u.holding.instrumentType || "—"; tr.appendChild(instrTd);
       });
     }
 
@@ -422,6 +435,9 @@ export function showHoldingImportModal(account) {
 
         const typeTd = document.createElement("td"); typeTd.className = "dim"; typeTd.style.fontSize = "0.85rem";
         typeTd.textContent = d.holding.assetType || "—"; tr.appendChild(typeTd);
+
+        const instrTd = document.createElement("td"); instrTd.className = "dim"; instrTd.style.fontSize = "0.85rem";
+        instrTd.textContent = d.holding.instrumentType || "—"; tr.appendChild(instrTd);
       });
     }
 
@@ -458,11 +474,36 @@ export function showHoldingImportModal(account) {
         originSel.addEventListener("change", () => { a.origin = originSel.value; });
         originTd.appendChild(originSel); tr.appendChild(originTd);
 
-        // Asset type dropdown
+        // Asset class dropdown
         const typeTd = document.createElement("td");
-        const typeSel = buildSelect(ASSET_TYPE_OPTS, a.assetType);
-        typeSel.addEventListener("change", () => { a.assetType = typeSel.value; });
-        typeTd.appendChild(typeSel); tr.appendChild(typeTd);
+        const assetSel = buildSelect(ASSET_CLASS_OPTS, a.assetType);
+        typeTd.appendChild(assetSel); tr.appendChild(typeTd);
+
+        // Instrument dropdown
+        const instrTd = document.createElement("td");
+        const instrSel = buildSelect(INSTRUMENT_OPTS, a.instrumentType);
+        // If asset class is cash, allow Cash or Money Market; block ETF/Fund/Stock
+        const CASH_INSTRUMENTS = new Set(["cash", "money-market"]);
+        function syncInstrumentLock() {
+          if (assetSel.value === "cash") {
+            if (!CASH_INSTRUMENTS.has(instrSel.value)) {
+              instrSel.value = "cash";
+              a.instrumentType = "cash";
+            }
+            instrSel.disabled = false;
+          } else {
+            instrSel.disabled = false;
+            if (CASH_INSTRUMENTS.has(instrSel.value)) { instrSel.value = ""; a.instrumentType = ""; }
+          }
+        }
+        assetSel.addEventListener("change", () => {
+          a.assetType = assetSel.value;
+          syncInstrumentLock();
+        });
+        instrSel.addEventListener("change", () => { a.instrumentType = instrSel.value; });
+        // Apply initial lock state for cash-detected rows
+        syncInstrumentLock();
+        instrTd.appendChild(instrSel); tr.appendChild(instrTd);
       });
     }
 
@@ -523,10 +564,11 @@ export function showHoldingImportModal(account) {
         adds: adds
           .filter((a) => !a.skip)
           .map((a) => ({
-            symbol:    a.symbol,
-            shares:    a.rawQty !== null ? a.rawQty : a.rawVal,
-            origin:    a.origin    || null,
-            assetType: a.assetType || null,
+            symbol:         a.symbol,
+            shares:         a.rawQty !== null ? a.rawQty : a.rawVal,
+            origin:         a.origin         || null,
+            assetType:      a.assetType      || null,
+            instrumentType: a.instrumentType || null,
           })),
       });
 

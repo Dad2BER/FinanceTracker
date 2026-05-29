@@ -154,9 +154,27 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    # Add instrument_type to holdings (separates ETF/fund/stock from asset class)
+    try:
+        con.execute("ALTER TABLE holdings ADD COLUMN instrument_type TEXT")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     # ── Data migrations ────────────────────────────────────────────────────────
     # Rename account_type 'liability' → 'ledger'
     con.execute("UPDATE accounts SET account_type = 'ledger' WHERE account_type = 'liability'")
+
+    # Migrate old combined assetType values → separate assetType (class) + instrumentType.
+    # Run instrument_type UPDATE before asset_type UPDATE so WHERE clauses still match.
+    con.execute("UPDATE holdings SET instrument_type = 'etf'   WHERE asset_type = 'stock-fund'")
+    con.execute("UPDATE holdings SET asset_type      = 'equity' WHERE asset_type = 'stock-fund'")
+    con.execute("UPDATE holdings SET instrument_type = 'stock'  WHERE asset_type = 'company'")
+    con.execute("UPDATE holdings SET asset_type      = 'equity' WHERE asset_type = 'company'")
+    con.execute("UPDATE holdings SET instrument_type = 'etf'    WHERE asset_type = 'bonds'       AND instrument_type IS NULL")
+    con.execute("UPDATE holdings SET instrument_type = 'stock'  WHERE asset_type = 'real-estate' AND instrument_type IS NULL")
+    con.execute("UPDATE holdings SET instrument_type = 'etf'    WHERE asset_type = 'crypto'      AND instrument_type IS NULL")
+    con.execute("UPDATE holdings SET instrument_type = 'cash'   WHERE asset_type = 'cash'        AND instrument_type IS NULL")
     con.commit()
 
     # If no profiles exist, create a default "My Accounts" profile and assign
@@ -205,6 +223,8 @@ def load_state(profile_id):
                 holding["origin"] = h["origin"]
             if h["asset_type"]:
                 holding["assetType"] = h["asset_type"]
+            if h["instrument_type"]:
+                holding["instrumentType"] = h["instrument_type"]
             if h["dividend_per_share"] is not None:
                 holding["dividendPerShare"] = h["dividend_per_share"]
             if h["dividend_reinvested"]:
@@ -381,8 +401,8 @@ def save_state(data, profile_id):
                 for idx, h in enumerate(acc.get("holdings", [])):
                     con.execute(
                         "INSERT INTO holdings "
-                        "(id, account_id, symbol, shares, origin, asset_type, sort_order, dividend_per_share, dividend_reinvested) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "(id, account_id, symbol, shares, origin, asset_type, instrument_type, sort_order, dividend_per_share, dividend_reinvested) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             h["id"],
                             acc["id"],
@@ -390,6 +410,7 @@ def save_state(data, profile_id):
                             h["shares"],
                             h.get("origin"),
                             h.get("assetType"),
+                            h.get("instrumentType"),
                             idx,
                             h.get("dividendPerShare"),
                             1 if h.get("dividendReinvested") else 0,

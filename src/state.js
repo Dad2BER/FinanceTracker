@@ -170,13 +170,14 @@ export function getAccountValueHistory(accountId) {
 
 // ── Holding CRUD ──────────────────────────────────────────────────────────────
 
-export function addHolding(accountId, symbol, shares, origin, assetType, dividendPerShare, dividendReinvested) {
+export function addHolding(accountId, symbol, shares, origin, assetType, instrumentType, dividendPerShare, dividendReinvested) {
   const holding = {
     id: generateId(),
     symbol: symbol.trim().toUpperCase(),
     shares: parseFloat(shares),
     ...(origin ? { origin } : {}),
     ...(assetType ? { assetType } : {}),
+    ...(instrumentType ? { instrumentType } : {}),
     ...(dividendPerShare != null && dividendPerShare !== '' ? { dividendPerShare: parseFloat(dividendPerShare) } : {}),
     ...(dividendReinvested ? { dividendReinvested: true } : {}),
   };
@@ -193,7 +194,7 @@ export function addHolding(accountId, symbol, shares, origin, assetType, dividen
   return holding;
 }
 
-export function updateHolding(accountId, holdingId, symbol, shares, origin, assetType, dividendPerShare, dividendReinvested) {
+export function updateHolding(accountId, holdingId, symbol, shares, origin, assetType, instrumentType, dividendPerShare, dividendReinvested) {
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) => {
@@ -205,6 +206,7 @@ export function updateHolding(accountId, holdingId, symbol, shares, origin, asse
           const updated = { ...h, symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) };
           if (origin) updated.origin = origin; else delete updated.origin;
           if (assetType) updated.assetType = assetType; else delete updated.assetType;
+          if (instrumentType) updated.instrumentType = instrumentType; else delete updated.instrumentType;
           if (dividendPerShare != null && dividendPerShare !== '') updated.dividendPerShare = parseFloat(dividendPerShare);
           else delete updated.dividendPerShare;
           if (dividendReinvested) updated.dividendReinvested = true; else delete updated.dividendReinvested;
@@ -267,7 +269,7 @@ export function deleteHolding(accountId, holdingId) {
 // Applies all three kinds of holding changes in one atomic state mutation.
 // updates: [{ holdingId, shares }]
 // deletes: [{ holdingId }]
-// adds:    [{ symbol, shares, origin, assetType }]
+// adds:    [{ symbol, shares, origin, assetType, instrumentType }]
 export function applyHoldingsImport(accountId, { updates = [], deletes = [], adds = [] }) {
   const deleteIds = new Set(deletes.map((d) => d.holdingId));
   const updateMap = new Map(updates.map((u) => [u.holdingId, u.shares]));
@@ -278,10 +280,11 @@ export function applyHoldingsImport(accountId, { updates = [], deletes = [], add
       let holdings = (a.holdings || [])
         .filter((h) => !deleteIds.has(h.id))
         .map((h) => updateMap.has(h.id) ? { ...h, shares: updateMap.get(h.id) } : h);
-      adds.forEach(({ symbol, shares, origin, assetType }) => {
+      adds.forEach(({ symbol, shares, origin, assetType, instrumentType }) => {
         const h = { id: generateId(), symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) };
-        if (origin)    h.origin    = origin;
-        if (assetType) h.assetType = assetType;
+        if (origin)         h.origin         = origin;
+        if (assetType)      h.assetType      = assetType;
+        if (instrumentType) h.instrumentType = instrumentType;
         holdings.push(h);
       });
       return { ...a, holdings };

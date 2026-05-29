@@ -16,10 +16,9 @@ export const COLUMNS = [
   { key: "inflation",  label: "Inflation",    sub: "CPI" },
 ];
 
-// Maps each holding assetType key to the historic return column used as proxy.
+// Maps each holding assetType (asset class) to the historic return column used as proxy.
 export const ASSET_TYPE_TO_COLUMN = {
-  "stock-fund":  "sp500",
-  "company":     "sp500",
+  "equity":      "sp500",
   "crypto":      "sp500",
   "bonds":       "corpBond",
   "real-estate": "realEstate",

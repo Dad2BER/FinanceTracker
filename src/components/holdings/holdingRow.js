@@ -3,7 +3,24 @@ import { showConfirmDialog } from "../ui/confirmDialog.js";
 import { deleteHolding } from "../../state.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
-import { showStockInfo } from "./stockInfoModal.js";
+
+const ORIGIN_LABELS = { domestic: "Domestic", international: "International" };
+
+const ASSET_CLASS_LABELS = {
+  equity:        "Equity",
+  bonds:         "Bonds",
+  "real-estate": "Real Estate",
+  crypto:        "Crypto",
+  cash:          "Cash",
+};
+
+const INSTRUMENT_LABELS = {
+  etf:            "ETF",
+  fund:           "Fund",
+  stock:          "Stock",
+  cash:           "Cash",
+  "money-market": "Money Market",
+};
 
 /**
  * Creates a table row element for a holding.
@@ -38,17 +55,20 @@ export function createHoldingRow(accountId, holding, prices, quoteDetails, price
     valueCell = `<td class="align-right dim">—</td>`;
   }
 
-  const ORIGIN_LABELS = { domestic: "Domestic", international: "International" };
-  const TYPE_LABELS = {
-    "stock-fund": "Stock Fund", "real-estate": "Real-estate",
-    company: "Company", crypto: "Crypto", bonds: "Bonds", cash: "Cash",
-  };
   const originCell = holding.origin
     ? `<td>${ORIGIN_LABELS[holding.origin] ?? escHtml(holding.origin)}</td>`
     : `<td><span class="dim">—</span></td>`;
-  const typeCell = holding.assetType
-    ? `<td>${TYPE_LABELS[holding.assetType] ?? escHtml(holding.assetType)}</td>`
+
+  const assetClassCell = holding.assetType
+    ? `<td>${ASSET_CLASS_LABELS[holding.assetType] ?? escHtml(holding.assetType)}</td>`
     : `<td><span class="dim">—</span></td>`;
+
+  // Show instrument unless it's the generic "cash" value (redundant when Asset Class is already Cash)
+  const showInstrument = holding.instrumentType && holding.instrumentType !== "cash";
+  const instrumentCell = showInstrument
+    ? `<td>${INSTRUMENT_LABELS[holding.instrumentType] ?? escHtml(holding.instrumentType)}</td>`
+    : `<td><span class="dim">—</span></td>`;
+
   const dps = (holding.dividendPerShare != null && holding.dividendPerShare > 0)
     ? holding.dividendPerShare : null;
   let dividendCell;
@@ -61,7 +81,7 @@ export function createHoldingRow(accountId, holding, prices, quoteDetails, price
     dividendCell = `<td class="align-right dim">—</td>`;
   }
 
-  // Symbol cell: clickable for non-cash (opens stock info popup), plain for cash
+  // Symbol cell: clickable for non-cash, plain for cash
   const symbolCellHtml = isCash
     ? `<td class="symbol-cell"><strong>${escHtml(holding.symbol)}</strong></td>`
     : `<td class="symbol-cell"><button class="symbol-link" data-action="info" title="View ${escHtml(holding.symbol)} info">${escHtml(holding.symbol)}</button></td>`;
@@ -70,7 +90,8 @@ export function createHoldingRow(accountId, holding, prices, quoteDetails, price
     ${symbolCellHtml}
     <td class="align-right">${holding.shares.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td>
     ${originCell}
-    ${typeCell}
+    ${assetClassCell}
+    ${instrumentCell}
     ${dividendCell}
     ${priceCell}
     ${valueCell}
@@ -81,9 +102,11 @@ export function createHoldingRow(accountId, holding, prices, quoteDetails, price
   `;
 
   if (!isCash) {
-    tr.querySelector("[data-action='info']").addEventListener("click", () =>
-      showStockInfo(holding.symbol)
-    );
+    tr.querySelector("[data-action='info']").addEventListener("click", () => {
+      const sym  = holding.symbol.toLowerCase();
+      const isEtf = holding.instrumentType === "etf" || holding.instrumentType === "fund";
+      window.open(`https://stockanalysis.com/${isEtf ? "etf" : "stocks"}/${sym}/`, "_blank", "noopener");
+    });
   }
 
   tr.querySelector("[data-action='edit']").addEventListener("click", () =>

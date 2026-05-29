@@ -88,6 +88,7 @@ export async function fetchDividendMetric(symbol) {
   }
 }
 
+
 /**
  * Fetches the company profile for a symbol.
  * Returns the raw Finnhub /stock/profile2 response:

@@ -1,4 +1,3 @@
-import { showStockInfo } from "../holdings/stockInfoModal.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 import { attachTableFilter } from "../../utils/tableFilter.js";
@@ -7,9 +6,21 @@ import { updateDividendBySymbol } from "../../state.js";
 
 // ── Label maps ────────────────────────────────────────────────────────────────
 const ORIGIN_LABELS = { domestic: "Domestic", international: "International" };
-const TYPE_LABELS = {
-  "stock-fund": "Stock Fund", "real-estate": "Real-estate",
-  company: "Company", crypto: "Crypto", bonds: "Bonds", cash: "Cash",
+
+const ASSET_CLASS_LABELS = {
+  equity:        "Equity",
+  bonds:         "Bonds",
+  "real-estate": "Real Estate",
+  crypto:        "Crypto",
+  cash:          "Cash",
+};
+
+const INSTRUMENT_LABELS = {
+  etf:            "ETF",
+  fund:           "Fund",
+  stock:          "Stock",
+  cash:           "Cash",
+  "money-market": "Money Market",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -45,8 +56,9 @@ function aggregateHoldings(accounts) {
       if (map.has(h.symbol)) {
         const e = map.get(h.symbol);
         e.shares += h.shares;
-        if (h.origin)    e.origins.add(h.origin);
-        if (h.assetType) e.types.add(h.assetType);
+        if (h.origin)         e.origins.add(h.origin);
+        if (h.assetType)      e.types.add(h.assetType);
+        if (h.instrumentType) e.instruments.add(h.instrumentType);
         // Use first non-zero dividendPerShare found for this symbol
         if (!e.dividendPerShare && h.dividendPerShare > 0) e.dividendPerShare = h.dividendPerShare;
         // DRIP: true only if ALL holdings of this symbol are reinvested
@@ -56,8 +68,9 @@ function aggregateHoldings(accounts) {
           symbol:             h.symbol,
           shares:             h.shares,
           isCash:             h.assetType === "cash",
-          origins:            new Set(h.origin    ? [h.origin]    : []),
-          types:              new Set(h.assetType ? [h.assetType] : []),
+          origins:            new Set(h.origin         ? [h.origin]         : []),
+          types:              new Set(h.assetType      ? [h.assetType]      : []),
+          instruments:        new Set(h.instrumentType ? [h.instrumentType] : []),
           dividendPerShare:   (h.dividendPerShare > 0) ? h.dividendPerShare : null,
           dividendReinvested: h.dividendReinvested ?? false,
         });
@@ -84,10 +97,16 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     ? (ORIGIN_LABELS[originArr[0]] ?? escHtml(originArr[0]))
     : null;
 
-  // Type: single value or "—" when accounts disagree
+  // Asset class: single value or "—" when accounts disagree
   const typeArr = [...entry.types];
   const typeTxt = typeArr.length === 1
-    ? (TYPE_LABELS[typeArr[0]] ?? escHtml(typeArr[0]))
+    ? (ASSET_CLASS_LABELS[typeArr[0]] ?? escHtml(typeArr[0]))
+    : null;
+
+  // Instrument type: single value or "—" when accounts disagree
+  const instrArr = [...entry.instruments];
+  const instrTxt = instrArr.length === 1
+    ? (INSTRUMENT_LABELS[instrArr[0]] ?? escHtml(instrArr[0]))
     : null;
 
   // Price / value cells
@@ -128,15 +147,18 @@ function buildRow(entry, prices, quoteDetails, pricesLoading) {
     <td class="align-right">${shares.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td>
     <td>${originTxt ? originTxt : '<span class="dim">—</span>'}</td>
     <td>${typeTxt   ? typeTxt   : '<span class="dim">—</span>'}</td>
+    <td>${(instrTxt && instrArr[0] !== "cash") ? instrTxt : '<span class="dim">—</span>'}</td>
     <td class="align-right dividend-edit-cell">${dividendValueHtml} <button class="icon-btn dividend-edit-btn" title="Edit dividend rate">&#9998;</button></td>
     ${priceCell}
     ${valueCell}
   `;
 
   if (!isCash) {
-    tr.querySelector("[data-action='info']")?.addEventListener("click", () =>
-      showStockInfo(symbol)
-    );
+    tr.querySelector("[data-action='info']")?.addEventListener("click", () => {
+      const sym   = symbol.toLowerCase();
+      const isEtf = entry.instruments.has("etf") || entry.instruments.has("fund");
+      window.open(`https://stockanalysis.com/${isEtf ? "etf" : "stocks"}/${sym}/`, "_blank", "noopener");
+    });
   }
   tr.querySelector(".dividend-edit-btn")?.addEventListener("click", () =>
     showDividendModal(symbol, entry.dividendPerShare, entry.dividendReinvested)
@@ -294,7 +316,8 @@ export function renderAssetsView(
           <th>Symbol</th>
           <th class="align-right">Shares</th>
           <th>Origin</th>
-          <th>Type</th>
+          <th>Asset Class</th>
+          <th>Instrument</th>
           <th class="align-right">Dividend</th>
           <th class="align-right">Price</th>
           <th class="align-right">Value</th>
@@ -312,9 +335,7 @@ export function renderAssetsView(
   // Columns: Symbol, Shares, Origin, Type, Dividend, Price, Value
   attachTableFilter(
     tableWrapper.querySelector("table"),
-    [true, false, true, true, false, false, false],
-    {},
-    container
+    [true, false, true, true, false, false, false]
   );
 
   // ── Visible-row value sum in the filter row's Value cell ─────────────────────

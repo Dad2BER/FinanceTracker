@@ -3,9 +3,8 @@ import { createNetWorthChart } from "./netWorthChart.js";
 import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 
 const ASSET_TYPE_META = {
-  "stock-fund":   { label: "Stock Fund",   color: "#6366f1" },
+  "equity":       { label: "Equity",       color: "#6366f1" },
   "real-estate":  { label: "Real Estate",  color: "#f59e0b" },
-  "company":      { label: "Company",      color: "#3b82f6" },
   "crypto":       { label: "Crypto",       color: "#f97316" },
   "bonds":        { label: "Bonds",        color: "#22c55e" },
   "cash":         { label: "Cash",         color: "#64748b" },

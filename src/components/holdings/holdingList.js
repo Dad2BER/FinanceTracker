@@ -142,7 +142,8 @@ export function renderHoldingList(
             <th>Symbol</th>
             <th class="align-right">Shares</th>
             <th>Origin</th>
-            <th>Type</th>
+            <th>Asset Class</th>
+            <th>Instrument</th>
             <th class="align-right">Dividend</th>
             <th class="align-right">Price</th>
             <th class="align-right">Value</th>
