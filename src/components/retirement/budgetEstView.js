@@ -431,13 +431,6 @@ export function renderBudgetEstView(container) {
 
         <div class="be-result-grid">
           <div class="be-result-row">
-            <div class="be-result-label">SS Transition End Value</div>
-            <div>${tvDisplay}</div>
-            ${!alreadySS && transitionValue !== null ? tvInflAdjDisplay : ""}
-            ${tvNote ? `<div class="be-result-note">${tvNote}</div>` : ""}
-          </div>
-
-          <div class="be-result-row">
             <div class="be-result-label">Post-Tax Monthly Budget</div>
             <div>${mbDisplay}</div>
             <div class="be-result-note">
@@ -446,6 +439,13 @@ export function renderBudgetEstView(container) {
                 : `From transition portfolio over ${_b.postSSYears} yr + SS`}
               &nbsp;·&nbsp; Pre-tax: ${monthlyBudget !== null ? formatCurrency(monthlyBudget / Math.max(0.01, 1 - _b.taxRate / 100)) + "/mo" : "—"}
             </div>
+          </div>
+
+          <div class="be-result-row">
+            <div class="be-result-label">SS Transition End Value</div>
+            <div>${tvDisplay}</div>
+            ${!alreadySS && transitionValue !== null ? tvInflAdjDisplay : ""}
+            ${tvNote ? `<div class="be-result-note">${tvNote}</div>` : ""}
           </div>
         </div>
       </div>
