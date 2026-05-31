@@ -8,6 +8,35 @@ import {
   flushBudgetEstInputs,
 } from "../../state.js";
 
+// ── SVG helpers ───────────────────────────────────────────────────────────────
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function beNiceScale(minVal, maxVal, targetTicks = 5) {
+  if (minVal === maxVal) { const p = Math.abs(minVal) * 0.1 || 100_000; minVal -= p; maxVal += p; }
+  const range = maxVal - minVal;
+  const roughStep = range / (targetTicks - 1);
+  const mag = Math.pow(10, Math.floor(Math.log10(roughStep)));
+  const norm = roughStep / mag;
+  const mult = norm <= 1.5 ? 1 : norm <= 2.25 ? 2 : norm <= 3.5 ? 2.5 : norm <= 7 ? 5 : 10;
+  const step = mult * mag;
+  const ticks = [];
+  let v = Math.floor(minVal / step) * step;
+  const top = Math.ceil(maxVal / step) * step;
+  while (v <= top + step * 1e-9) { ticks.push(Math.round(v / step) * step); v += step; }
+  return ticks;
+}
+
+function beFmt(v) {
+  const a = Math.abs(v);
+  if (a >= 1_000_000) return (v < 0 ? "-$" : "$") + (Math.abs(v) / 1_000_000).toFixed(1) + "M";
+  if (a >= 1_000)     return (v < 0 ? "-$" : "$") + (Math.abs(v) / 1_000).toFixed(0) + "K";
+  return (v < 0 ? "-$" : "$") + Math.round(Math.abs(v));
+}
+
 // Local state — initialized once on first render
 let _b = null;
 let _bLoaded = false;
@@ -60,6 +89,185 @@ function persistInputs() {
   flushBudgetEstInputs(inputs);               // immediate localStorage write
   clearTimeout(_persistTimer);
   _persistTimer = setTimeout(() => saveBudgetEstInputs(inputs), 500); // debounced server POST
+}
+
+// ── Projection data ───────────────────────────────────────────────────────────
+function buildNetWorthProjection(b) {
+  const res = calcResults(b);
+  if (res.monthlyBudget === null) return [];
+
+  const r         = b.ror / 100 / 12;
+  const ssMonthly = b.annualSS / 12;
+  const alreadySS = b.ssAge <= b.age;
+  const n1        = alreadySS ? 0 : (b.ssAge - b.age) * 12;
+  const n2        = b.postSSYears * 12;
+
+  let postDraw, preDraw;
+  if (alreadySS) {
+    postDraw = pmt(r, n2, b.netWorth);
+    preDraw  = 0;
+  } else {
+    if (res.transitionValue === null) return [];
+    postDraw = pmt(r, n2, Math.max(0, res.transitionValue));
+    preDraw  = postDraw + ssMonthly;
+  }
+
+  const points = [];
+  let portfolio = b.netWorth;
+  const total   = n1 + n2;
+
+  for (let m = 0; m <= total; m++) {
+    if (m % 12 === 0) {
+      points.push({ age: b.age + m / 12, value: portfolio, preSS: m < n1 });
+    }
+    if (m < total) {
+      portfolio = portfolio * (1 + r) - (m < n1 ? preDraw : postDraw);
+    }
+  }
+  return points;
+}
+
+// ── Chart renderer ────────────────────────────────────────────────────────────
+function renderBudgetChart(chartDiv, points, b) {
+  chartDiv.innerHTML = "";
+  if (points.length < 2) return;
+
+  const W = 520, H = 210;
+  const pad = { top: 20, right: 20, bottom: 30, left: 66 };
+  const cW  = W - pad.left - pad.right;
+  const cH  = H - pad.top  - pad.bottom;
+  const n   = points.length;
+
+  const vals    = points.map(p => p.value);
+  const minVal  = Math.min(0, ...vals);
+  const maxVal  = Math.max(...vals);
+  const ticks   = beNiceScale(minVal, maxVal, 5);
+  const niceMin = ticks[0];
+  const niceMax = ticks[ticks.length - 1];
+  const nRange  = niceMax - niceMin || 1;
+
+  const xOf = i => pad.left + (i / (n - 1)) * cW;
+  const yOf = v => pad.top + cH - ((v - niceMin) / nRange) * cH;
+
+  const PRIMARY = "var(--color-primary)";
+  const POST_C  = "var(--color-success, #22c55e)";
+  const alreadySS = b.ssAge <= b.age;
+  // Index of first post-SS point
+  const ssIdx = alreadySS ? 0 : (points.findIndex(p => !p.preSS) ?? 0);
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "be-chart-svg" });
+
+  // Y grid + labels
+  for (const v of ticks) {
+    const y = yOf(v);
+    svg.appendChild(svgEl("line", { x1: pad.left, y1: y, x2: pad.left + cW, y2: y, stroke: "var(--color-border)", "stroke-width": "1" }));
+    const lbl = svgEl("text", { x: pad.left - 6, y: y + 4, "text-anchor": "end", fill: "var(--color-text-dim)", "font-size": "9", "font-family": "system-ui,sans-serif" });
+    lbl.textContent = beFmt(v);
+    svg.appendChild(lbl);
+  }
+
+  // SS transition vertical annotation
+  if (!alreadySS && ssIdx > 0 && ssIdx < n) {
+    const sx = xOf(ssIdx);
+    svg.appendChild(svgEl("line", { x1: sx, y1: pad.top, x2: sx, y2: pad.top + cH, stroke: "var(--color-text-dim)", "stroke-width": "1", "stroke-dasharray": "4 3", opacity: "0.45" }));
+    const ssLbl = svgEl("text", { x: sx + 4, y: pad.top + 11, fill: "var(--color-text-dim)", "font-size": "8.5", "font-family": "system-ui,sans-serif" });
+    ssLbl.textContent = `SS age ${b.ssAge}`;
+    svg.appendChild(ssLbl);
+  }
+
+  // Area + line helper
+  function addSegment(from, to, color) {
+    if (to <= from) return;
+    const seg = points.slice(from, to + 1);
+    const aD = `M ${xOf(from).toFixed(1)},${yOf(niceMin).toFixed(1)} ` +
+      seg.map((p, i) => `L ${xOf(from + i).toFixed(1)},${yOf(p.value).toFixed(1)}`).join(" ") +
+      ` L ${xOf(to).toFixed(1)},${yOf(niceMin).toFixed(1)} Z`;
+    svg.appendChild(svgEl("path", { d: aD, fill: color, opacity: "0.13" }));
+
+    const lD = seg.map((p, i) => `${i === 0 ? "M" : "L"} ${xOf(from + i).toFixed(1)} ${yOf(p.value).toFixed(1)}`).join(" ");
+    svg.appendChild(svgEl("path", { d: lD, fill: "none", stroke: color, "stroke-width": "2", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  }
+
+  if (!alreadySS && ssIdx > 0) addSegment(0, ssIdx, PRIMARY);
+  addSegment(alreadySS ? 0 : ssIdx, n - 1, POST_C);
+
+  // End dot
+  const endC = POST_C;
+  svg.appendChild(svgEl("circle", { cx: xOf(n - 1).toFixed(1), cy: yOf(points[n - 1].value).toFixed(1), r: "3.5", fill: endC }));
+
+  // X-axis age labels
+  const labelSet = new Set([points[0].age]);
+  if (!alreadySS && ssIdx > 0) labelSet.add(points[ssIdx].age);
+  labelSet.add(points[n - 1].age);
+  for (const age of labelSet) {
+    const idx = points.findIndex(p => p.age === age);
+    if (idx < 0) continue;
+    const anchor = idx === 0 ? "start" : idx === n - 1 ? "end" : "middle";
+    const lbl = svgEl("text", { x: xOf(idx).toFixed(1), y: H - 4, "text-anchor": anchor, fill: "var(--color-text-dim)", "font-size": "9", "font-family": "system-ui,sans-serif" });
+    lbl.textContent = `Age ${age}`;
+    svg.appendChild(lbl);
+  }
+
+  // Legend
+  const legX = pad.left;
+  const legY = pad.top - 6;
+  [[PRIMARY, "Pre-SS"], [POST_C, "Post-SS"]].forEach(([color, label], li) => {
+    if (alreadySS && li === 0) return;
+    const ox = legX + li * 80;
+    svg.appendChild(svgEl("line", { x1: ox, y1: legY, x2: ox + 18, y2: legY, stroke: color, "stroke-width": "2.5", "stroke-linecap": "round" }));
+    const t = svgEl("text", { x: ox + 22, y: legY + 4, fill: "var(--color-text-dim)", "font-size": "8.5", "font-family": "system-ui,sans-serif" });
+    t.textContent = label;
+    svg.appendChild(t);
+  });
+
+  // Hover layer
+  const hLine = svgEl("line", { x1: 0, y1: pad.top, x2: 0, y2: pad.top + cH, stroke: "var(--color-text-dim)", "stroke-width": "1", "stroke-dasharray": "3 2", opacity: "0" });
+  svg.appendChild(hLine);
+  const hDot = svgEl("circle", { cx: 0, cy: 0, r: "4", fill: PRIMARY, stroke: "var(--color-bg,#fff)", "stroke-width": "2", opacity: "0" });
+  svg.appendChild(hDot);
+
+  const TW = 140, TH = 42, TR = 5;
+  const tip = svgEl("g", { opacity: "0", "pointer-events": "none" });
+  tip.appendChild(svgEl("rect", { width: TW, height: TH, rx: TR, ry: TR, fill: "var(--color-surface,#1e2227)", stroke: "var(--color-border)", "stroke-width": "1" }));
+  const tAge = svgEl("text", { x: TW / 2, y: 14, "text-anchor": "middle", fill: "var(--color-text-dim)", "font-size": "9", "font-family": "system-ui,sans-serif" });
+  const tVal = svgEl("text", { x: TW / 2, y: 30, "text-anchor": "middle", fill: "var(--color-text,#e8eaf0)", "font-size": "11.5", "font-weight": "600", "font-family": "system-ui,sans-serif" });
+  tip.appendChild(tAge); tip.appendChild(tVal);
+  svg.appendChild(tip);
+
+  const hit = svgEl("rect", { x: pad.left, y: pad.top, width: cW, height: cH, fill: "transparent", cursor: "crosshair" });
+  svg.appendChild(hit);
+
+  function onMove(clientX) {
+    const rect = svg.getBoundingClientRect();
+    const svgX  = ((clientX - rect.left) / rect.width) * W;
+    const chartX = Math.max(0, Math.min(cW, svgX - pad.left));
+    const idx    = Math.max(0, Math.min(n - 1, Math.round((chartX / cW) * (n - 1))));
+    const pt     = points[idx];
+    const cx     = xOf(idx), cy = yOf(pt.value);
+    const color  = pt.preSS ? PRIMARY : POST_C;
+
+    hLine.setAttribute("x1", cx); hLine.setAttribute("x2", cx); hLine.setAttribute("opacity", "1");
+    hDot.setAttribute("cx", cx); hDot.setAttribute("cy", cy); hDot.setAttribute("fill", color); hDot.setAttribute("opacity", "1");
+
+    tAge.textContent = `Age ${pt.age}  ·  ${pt.preSS ? "Pre-SS" : "Post-SS"}`;
+    tVal.textContent = pt.value >= 0
+      ? "$" + Math.round(pt.value).toLocaleString("en-US")
+      : "Depleted";
+
+    let tx = cx - TW / 2;
+    if (tx < pad.left) tx = pad.left;
+    if (tx + TW > W - pad.right) tx = W - pad.right - TW;
+    const ty = cy - TH - 8 < pad.top ? cy + 10 : cy - TH - 8;
+    tip.setAttribute("transform", `translate(${tx.toFixed(1)},${ty.toFixed(1)})`);
+    tip.setAttribute("opacity", "1");
+  }
+
+  hit.addEventListener("mousemove",  e => onMove(e.clientX));
+  hit.addEventListener("mouseleave", () => { hLine.setAttribute("opacity","0"); hDot.setAttribute("opacity","0"); tip.setAttribute("opacity","0"); });
+  hit.addEventListener("touchmove",  e => { if (e.touches.length) { e.preventDefault(); onMove(e.touches[0].clientX); } }, { passive: false });
+  hit.addEventListener("touchend",   () => { hLine.setAttribute("opacity","0"); hDot.setAttribute("opacity","0"); tip.setAttribute("opacity","0"); });
+
+  chartDiv.appendChild(svg);
 }
 
 // Standard annuity payment: amount drawn each period to exhaust pv over n periods at rate r/period
@@ -178,6 +386,9 @@ export function renderBudgetEstView(container) {
 
       <div class="budget-est-right">
         <div id="be-results"></div>
+        <div id="be-chart" class="ret-section be-chart-wrap">
+          <div class="ret-section-title">Portfolio Projection</div>
+        </div>
       </div>
 
     </div>
@@ -251,7 +462,16 @@ export function renderBudgetEstView(container) {
     `;
   }
 
+  const chartDiv = container.querySelector("#be-chart");
+  function refreshChart() {
+    // Keep the title, replace only the SVG
+    const existing = chartDiv.querySelector("svg");
+    if (existing) existing.remove();
+    renderBudgetChart(chartDiv, buildNetWorthProjection(_b), _b);
+  }
+
   renderResults();
+  refreshChart();
 
   function onChange(e) {
     const id  = e.target.id;
@@ -266,6 +486,7 @@ export function renderBudgetEstView(container) {
     if (id === "be-post-ss-years") _b.postSSYears = val;
     if (id !== "be-net-worth") persistInputs();
     renderResults();
+    refreshChart();
   }
 
   container.querySelector(".budget-est-left").addEventListener("input", onChange);
@@ -275,5 +496,6 @@ export function renderBudgetEstView(container) {
     _b.netWorth = nw;
     container.querySelector("#be-net-worth").value = nw;
     renderResults();
+    refreshChart();
   });
 }
