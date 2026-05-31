@@ -429,33 +429,23 @@ export function renderBudgetEstView(container) {
       <div class="ret-section">
         <div class="ret-section-title">Results</div>
 
-        <div class="be-result-row">
-          <div class="be-result-label">SS Transition End Value</div>
-          <div>${tvDisplay}</div>
-          ${!alreadySS && transitionValue !== null ? tvInflAdjDisplay : ""}
-          ${tvNote ? `<div class="be-result-note">${tvNote}</div>` : ""}
-        </div>
-
-        <div class="be-result-row">
-          <div class="be-result-label">Post-Tax Monthly Budget</div>
-          <div>${mbDisplay}</div>
-          <div class="be-result-note">
-            ${alreadySS
-              ? `From current portfolio over ${_b.postSSYears} yr + SS`
-              : `From transition portfolio over ${_b.postSSYears} yr + SS`}
-            &nbsp;·&nbsp; Pre-tax: ${monthlyBudget !== null ? formatCurrency(monthlyBudget / Math.max(0.01, 1 - _b.taxRate / 100)) + "/mo" : "—"}
+        <div class="be-result-grid">
+          <div class="be-result-row">
+            <div class="be-result-label">SS Transition End Value</div>
+            <div>${tvDisplay}</div>
+            ${!alreadySS && transitionValue !== null ? tvInflAdjDisplay : ""}
+            ${tvNote ? `<div class="be-result-note">${tvNote}</div>` : ""}
           </div>
-        </div>
 
-        <div class="be-assumptions">
-          <div class="be-assumptions-title">Assumptions</div>
-          <div class="be-assump-grid">
-            <span class="be-assump-key">Monthly RoR</span>
-            <span class="be-assump-val">${(_b.ror / 12).toFixed(4)}%</span>
-            <span class="be-assump-key">Pre-SS period</span>
-            <span class="be-assump-val">${alreadySS ? "—" : (_b.ssAge - _b.age) + " yr"}</span>
-            <span class="be-assump-key">Monthly SS income</span>
-            <span class="be-assump-val">${formatCurrency(_b.annualSS / 12)}/mo</span>
+          <div class="be-result-row">
+            <div class="be-result-label">Post-Tax Monthly Budget</div>
+            <div>${mbDisplay}</div>
+            <div class="be-result-note">
+              ${alreadySS
+                ? `From current portfolio over ${_b.postSSYears} yr + SS`
+                : `From transition portfolio over ${_b.postSSYears} yr + SS`}
+              &nbsp;·&nbsp; Pre-tax: ${monthlyBudget !== null ? formatCurrency(monthlyBudget / Math.max(0.01, 1 - _b.taxRate / 100)) + "/mo" : "—"}
+            </div>
           </div>
         </div>
       </div>
