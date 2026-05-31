@@ -14,6 +14,7 @@ export function initState(data, profileId) {
     accounts:          Array.isArray(data?.accounts)   ? data.accounts   : [],
     categories:        Array.isArray(data?.categories) ? data.categories : [],
     payees:            Array.isArray(data?.payees)     ? data.payees     : [],
+    dividendIncome:    Array.isArray(data?.dividendIncome) ? data.dividendIncome : [],
     retirementInputs:  data?.retirementInputs  ?? null,
     budgetEstInputs:   data?.budgetEstInputs   ?? null,
   };
@@ -416,6 +417,53 @@ export function deleteTransaction(accountId, txId) {
       if (a.id !== accountId) return a;
       return { ...a, transactions: (a.transactions || []).filter((t) => t.id !== txId) };
     }),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
+// ── Dividend Income CRUD ──────────────────────────────────────────────────────
+
+export function getDividendIncome() {
+  return _data.dividendIncome || [];
+}
+
+function normalizeDivRecord({ accountId, date, description, symbol, amount, roc, capGains, income }) {
+  return {
+    accountId:   accountId || null,
+    date,
+    description: (description || "").trim(),
+    symbol:      (symbol || "").trim().toUpperCase(),
+    amount:      parseFloat(amount) || 0,
+    roc:         parseFloat(roc) || 0,
+    capGains:    parseFloat(capGains) || 0,
+    income:      parseFloat(income) || 0,
+  };
+}
+
+export function addDividendIncome(record) {
+  const rec = { id: generateId(), ...normalizeDivRecord(record) };
+  _data = { ..._data, dividendIncome: [...(_data.dividendIncome || []), rec] };
+  saveData(_data, _profileId);
+  notify();
+  return rec;
+}
+
+export function updateDividendIncome(id, record) {
+  _data = {
+    ..._data,
+    dividendIncome: (_data.dividendIncome || []).map((r) =>
+      r.id === id ? { ...r, ...normalizeDivRecord(record) } : r
+    ),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
+export function deleteDividendIncome(id) {
+  _data = {
+    ..._data,
+    dividendIncome: (_data.dividendIncome || []).filter((r) => r.id !== id),
   };
   saveData(_data, _profileId);
   notify();

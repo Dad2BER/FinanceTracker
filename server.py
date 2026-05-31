@@ -96,6 +96,18 @@ def init_db():
             profile_id    TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
             settings_json TEXT NOT NULL DEFAULT '{}'
         );
+        CREATE TABLE IF NOT EXISTS dividend_income (
+            id          TEXT PRIMARY KEY,
+            profile_id  TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+            account_id  TEXT,
+            date        TEXT NOT NULL,
+            description TEXT,
+            symbol      TEXT,
+            amount      REAL NOT NULL DEFAULT 0,
+            roc         REAL NOT NULL DEFAULT 0,
+            cap_gains   REAL NOT NULL DEFAULT 0,
+            income      REAL NOT NULL DEFAULT 0
+        );
     """)
     con.commit()
 
@@ -310,6 +322,25 @@ def load_state(profile_id):
             payee["categoryId"] = p["category_id"]
         payees.append(payee)
 
+    # ── Dividend Income ───────────────────────────────────────────────────────
+    div_rows = con.execute(
+        "SELECT * FROM dividend_income WHERE profile_id = ? ORDER BY date",
+        (profile_id,)
+    ).fetchall()
+    dividend_income = []
+    for d in div_rows:
+        dividend_income.append({
+            "id":          d["id"],
+            "accountId":   d["account_id"],
+            "date":        d["date"],
+            "description": d["description"] or "",
+            "symbol":      d["symbol"] or "",
+            "amount":      d["amount"],
+            "roc":         d["roc"],
+            "capGains":    d["cap_gains"],
+            "income":      d["income"],
+        })
+
     # ── Profile Settings (retirement inputs, etc.) ────────────────────────────
     settings_row = con.execute(
         "SELECT settings_json FROM profile_settings WHERE profile_id = ?",
@@ -327,14 +358,16 @@ def load_state(profile_id):
         "accounts":         accounts,
         "categories":       categories,
         "payees":           payees,
+        "dividendIncome":   dividend_income,
         "retirementInputs": ret_inputs,
     }
 
 
 def save_state(data, profile_id):
-    accounts   = data.get("accounts",   [])
-    categories = data.get("categories", [])
-    payees     = data.get("payees",     [])
+    accounts        = data.get("accounts",        [])
+    categories      = data.get("categories",      [])
+    payees          = data.get("payees",          [])
+    dividend_income = data.get("dividendIncome",  [])
 
     con = sqlite3.connect(DB_PATH)
     con.execute("PRAGMA foreign_keys=ON")
@@ -360,8 +393,9 @@ def save_state(data, profile_id):
                 ph = ",".join("?" * len(cat_ids))
                 con.execute(f"DELETE FROM subcategories WHERE category_id IN ({ph})", cat_ids)
 
-            con.execute("DELETE FROM categories WHERE profile_id = ?", (profile_id,))
-            con.execute("DELETE FROM accounts   WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM categories      WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM dividend_income WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM accounts        WHERE profile_id = ?", (profile_id,))
 
             # ── Categories + Subcategories ─────────────────────────────────────
             for cat in categories:
@@ -438,6 +472,26 @@ def save_state(data, profile_id):
                         "VALUES (?, ?, ?)",
                         (acc["id"], vh["date"], vh["value"])
                     )
+
+            # ── Dividend Income ──────────────────────────────────────────────────
+            for d in dividend_income:
+                con.execute(
+                    "INSERT INTO dividend_income "
+                    "(id, profile_id, account_id, date, description, symbol, amount, roc, cap_gains, income) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        d["id"],
+                        profile_id,
+                        d.get("accountId"),
+                        d["date"],
+                        d.get("description") or None,
+                        d.get("symbol") or None,
+                        d.get("amount", 0) or 0,
+                        d.get("roc", 0) or 0,
+                        d.get("capGains", 0) or 0,
+                        d.get("income", 0) or 0,
+                    )
+                )
 
             # ── Profile Settings ────────────────────────────────────────────────
             retirement_inputs = data.get("retirementInputs")

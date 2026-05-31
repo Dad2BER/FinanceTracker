@@ -2054,6 +2054,44 @@
     .hsim-pie-cnt  { color: var(--color-text); font-weight: 600; white-space: nowrap; }
     .hsim-pie-pct  { color: var(--color-text-dim); font-weight: 400; }
 
+    /* ── Dividend Income ─────────────────────────────────────────────────── */
+    /* Wide 9-column table — allow horizontal scroll on narrow viewports */
+    .div-income-wrapper { overflow-x: auto; }
+    .div-income-table { min-width: 720px; }
+    /* Collapsible year-grouped table */
+    .div-year-head td {
+      background: var(--color-surface-2);
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 1px solid var(--color-border);
+      border-top: 2px solid var(--color-border);
+    }
+    .div-year-head:hover td { background: var(--color-surface); }
+    .div-year-chevron {
+      display: inline-block;
+      width: 1em;
+      color: var(--color-text-dim);
+      font-size: 0.7rem;
+    }
+    .div-year-count {
+      color: var(--color-text-dim);
+      font-weight: 400;
+      font-size: 0.8rem;
+      margin-left: 0.35rem;
+    }
+    .div-income-table .div-symbol { font-weight: 600; }
+
+    /* Dividend form: multi-column rows + distribution breakdown */
+    .form-row { display: flex; gap: 1rem; }
+    .form-row > .form-group { flex: 1; }
+    .form-row-3 { gap: 0.6rem; }
+    .dividend-sub-label {
+      font-size: 0.78rem !important;
+      color: var(--color-text-dim) !important;
+    }
+    .dividend-breakdown-label { display: block; }
+    .field-hint-warn { color: var(--color-danger); }
+
   </style>
 </head>
 <body>

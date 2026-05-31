@@ -14,6 +14,7 @@ import { renderSettingsView } from "./components/settings/settingsView.js";
 import { renderReportsView }     from "./components/reports/reportsView.js";
 import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
 import { renderAssetsView } from "./components/assets/assetsView.js";
+import { renderDividendIncome } from "./components/dividends/dividendIncomeView.js";
 import { renderRetirementInputs, renderRetirementSimulation } from "./components/retirement/retirementView.js";
 import { renderHistoricReturnsView } from "./components/retirement/historicReturnsView.js";
 import { renderHistoricSimulationView } from "./components/retirement/historicSimulationView.js";
@@ -31,8 +32,9 @@ const TABS = [
 
 const TAB_PAGES = {
   finances:   [
-    { id: "summary", label: "Portfolio" },
-    { id: "assets",  label: "Assets" },
+    { id: "summary",    label: "Portfolio" },
+    { id: "assets",     label: "Assets" },
+    { id: "div-income", label: "Div. Income" },
   ],
   reports:    [
     { id: "ytd-spending",  label: "Monthly Spend" },
@@ -55,6 +57,7 @@ const PAGE_TO_SIDEBAR = {
   "account-detail": "summary",
   "ledger-detail":  "summary",
   "assets":         "assets",
+  "div-income":     "div-income",
   "ytd-spending":   "ytd-spending",
   "subcat-spend":   "subcat-spend",
   "ret-inputs":       "ret-inputs",
@@ -438,6 +441,8 @@ function render() {
         pricesLoading,
         pricesError
       );
+    } else if (view.page === "div-income") {
+      renderDividendIncome(shellContent, getAccounts());
     } else if (view.page === "ledger-detail") {
       const account = getAccount(view.accountId);
       if (!account) {
