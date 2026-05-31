@@ -41,6 +41,9 @@ function beFmt(v) {
 let _b = null;
 let _bLoaded = false;
 let _persistTimer = null;
+let _dollarMode = "current";   // "current" = today's dollars, "future" = 3% inflation applied
+
+const INFLATION = 0.03;        // assumed annual inflation, matches RoR hint
 
 function currentNetWorth() {
   let total = 0;
@@ -387,7 +390,14 @@ export function renderBudgetEstView(container) {
       <div class="budget-est-right">
         <div id="be-results"></div>
         <div id="be-chart" class="ret-section be-chart-wrap">
-          <div class="ret-section-title">Portfolio Projection</div>
+          <div class="be-chart-header">
+            <div class="ret-section-title">Portfolio Projection</div>
+            <div class="report-mode-toggle" id="be-dollar-toggle">
+              <button class="report-mode-btn" data-dollar="current" title="Inflation-adjusted to today's purchasing power">Today's $</button>
+              <button class="report-mode-btn" data-dollar="future" title="Nominal dollars with 3% annual inflation applied">Future $</button>
+            </div>
+          </div>
+          <div id="be-chart-svg-wrap"></div>
         </div>
       </div>
 
@@ -452,13 +462,27 @@ export function renderBudgetEstView(container) {
     `;
   }
 
-  const chartDiv = container.querySelector("#be-chart");
+  const svgWrap = container.querySelector("#be-chart-svg-wrap");
   function refreshChart() {
-    // Keep the title, replace only the SVG
-    const existing = chartDiv.querySelector("svg");
-    if (existing) existing.remove();
-    renderBudgetChart(chartDiv, buildNetWorthProjection(_b), _b);
+    let points = buildNetWorthProjection(_b);
+    if (_dollarMode === "future") {
+      // Inflate each point from today's dollars to nominal dollars at its age
+      points = points.map(p => ({
+        ...p,
+        value: p.value * Math.pow(1 + INFLATION, p.age - _b.age),
+      }));
+    }
+    renderBudgetChart(svgWrap, points, _b);
+    container.querySelectorAll("#be-dollar-toggle [data-dollar]").forEach(btn =>
+      btn.classList.toggle("active", btn.dataset.dollar === _dollarMode));
   }
+
+  container.querySelector("#be-dollar-toggle").addEventListener("click", e => {
+    const btn = e.target.closest("[data-dollar]");
+    if (!btn || btn.dataset.dollar === _dollarMode) return;
+    _dollarMode = btn.dataset.dollar;
+    refreshChart();
+  });
 
   renderResults();
   refreshChart();
