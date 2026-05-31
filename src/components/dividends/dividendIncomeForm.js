@@ -68,25 +68,25 @@ export function showDividendIncomeForm(accounts, record = null) {
     </div>
 
     <div class="form-group">
-      <label class="dividend-breakdown-label">Distribution <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <label class="dividend-breakdown-label">Per Share Distribution <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
       <div class="form-row form-row-3">
         <div class="form-group">
-          <label for="df-roc" class="dividend-sub-label">RoC</label>
-          <input id="df-roc" type="number" step="0.01" class="form-input" placeholder="0.00"
-            value="${isEdit && record.roc ? record.roc : ""}">
+          <label for="df-ps-total" class="dividend-sub-label">Total / sh</label>
+          <input id="df-ps-total" type="number" step="0.0001" class="form-input" placeholder="0.0000"
+            value="${isEdit && record.perShareTotal ? record.perShareTotal : ""}">
         </div>
         <div class="form-group">
-          <label for="df-capgains" class="dividend-sub-label">Cap. Gains</label>
-          <input id="df-capgains" type="number" step="0.01" class="form-input" placeholder="0.00"
-            value="${isEdit && record.capGains ? record.capGains : ""}">
+          <label for="df-ps-roc" class="dividend-sub-label">RoC / sh</label>
+          <input id="df-ps-roc" type="number" step="0.0001" class="form-input" placeholder="0.0000"
+            value="${isEdit && record.perShareRoc ? record.perShareRoc : ""}">
         </div>
         <div class="form-group">
-          <label for="df-income" class="dividend-sub-label">Income</label>
-          <input id="df-income" type="number" step="0.01" class="form-input" placeholder="0.00"
-            value="${isEdit && record.income ? record.income : ""}">
+          <label for="df-ps-income" class="dividend-sub-label">Income / sh</label>
+          <input id="df-ps-income" type="number" step="0.0001" class="form-input" placeholder="0.0000"
+            value="${isEdit && record.perShareIncome ? record.perShareIncome : ""}">
         </div>
       </div>
-      <span class="field-hint" id="df-breakdown-hint">Leave blank if not breaking the amount down.</span>
+      <span class="field-hint" id="df-breakdown-hint">Leave blank if not distributing. RoC + Income must equal Total.</span>
       <span class="field-error" id="df-breakdown-err"></span>
     </div>
 
@@ -101,33 +101,41 @@ export function showDividendIncomeForm(accounts, record = null) {
   const symbolInput = el.querySelector("#df-symbol");
   const descInput   = el.querySelector("#df-description");
   const amountInput = el.querySelector("#df-amount");
-  const rocInput    = el.querySelector("#df-roc");
-  const cgInput     = el.querySelector("#df-capgains");
-  const incInput    = el.querySelector("#df-income");
+  const psTotalInput  = el.querySelector("#df-ps-total");
+  const psRocInput    = el.querySelector("#df-ps-roc");
+  const psIncomeInput = el.querySelector("#df-ps-income");
 
-  // Live hint: show running total of the breakdown vs. the amount
+  const fmtCur = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+
+  // Live hint: validate RoC + Income = Total (per share) and preview the
+  // dollar distribution of the entered Amount.
   const hintEl = el.querySelector("#df-breakdown-hint");
   function updateBreakdownHint() {
-    const roc = parseFloat(rocInput.value) || 0;
-    const cg  = parseFloat(cgInput.value) || 0;
-    const inc = parseFloat(incInput.value) || 0;
-    const sum = roc + cg + inc;
-    if (sum === 0) {
-      hintEl.textContent = "Leave blank if not breaking the amount down.";
+    const total  = parseFloat(psTotalInput.value)  || 0;
+    const roc    = parseFloat(psRocInput.value)    || 0;
+    const income = parseFloat(psIncomeInput.value) || 0;
+
+    if (total === 0 && roc === 0 && income === 0) {
+      hintEl.textContent = "Leave blank if not distributing. RoC + Income must equal Total.";
       hintEl.classList.remove("field-hint-warn");
       return;
     }
-    const amount = parseFloat(amountInput.value) || 0;
-    const fmt = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
-    if (Math.abs(sum - amount) > 0.005) {
-      hintEl.textContent = `Distribution totals ${fmt(sum)} — does not match Amount ${fmt(amount)}.`;
+    if (Math.abs((roc + income) - total) > 0.00005) {
+      hintEl.textContent = `RoC + Income (${(roc + income).toFixed(4)}/sh) must equal Total (${total.toFixed(4)}/sh).`;
       hintEl.classList.add("field-hint-warn");
-    } else {
-      hintEl.textContent = `Distribution totals ${fmt(sum)} ✓`;
-      hintEl.classList.remove("field-hint-warn");
+      return;
     }
+    // Valid split — preview the dollar distribution of the Amount
+    const amount = parseFloat(amountInput.value) || 0;
+    if (total > 0 && amount) {
+      const shares = amount / total;
+      hintEl.textContent = `≈ ${fmtCur(shares * roc)} RoC + ${fmtCur(shares * income)} Income`;
+    } else {
+      hintEl.textContent = "RoC + Income = Total ✓";
+    }
+    hintEl.classList.remove("field-hint-warn");
   }
-  [amountInput, rocInput, cgInput, incInput].forEach((inp) =>
+  [amountInput, psTotalInput, psRocInput, psIncomeInput].forEach((inp) =>
     inp.addEventListener("input", updateBreakdownHint)
   );
 
@@ -140,10 +148,15 @@ export function showDividendIncomeForm(accounts, record = null) {
     const description = descInput.value.trim();
     const amountRaw   = amountInput.value.trim();
 
+    const psTotal  = parseFloat(psTotalInput.value)  || 0;
+    const psRoc    = parseFloat(psRocInput.value)    || 0;
+    const psIncome = parseFloat(psIncomeInput.value) || 0;
+
     let valid = true;
     el.querySelector("#df-account-err").textContent = "";
     el.querySelector("#df-date-err").textContent = "";
     el.querySelector("#df-amount-err").textContent = "";
+    el.querySelector("#df-breakdown-err").textContent = "";
 
     if (!accountId) {
       el.querySelector("#df-account-err").textContent = "Account is required.";
@@ -157,6 +170,13 @@ export function showDividendIncomeForm(accounts, record = null) {
       el.querySelector("#df-amount-err").textContent = "A valid amount is required.";
       valid = false;
     }
+    // Distribution is optional, but if any field is filled, RoC + Income must equal Total
+    if ((psTotal !== 0 || psRoc !== 0 || psIncome !== 0) &&
+        Math.abs((psRoc + psIncome) - psTotal) > 0.00005) {
+      el.querySelector("#df-breakdown-err").textContent =
+        "RoC + Income must equal Total (per share).";
+      valid = false;
+    }
     if (!valid) return;
 
     const data = {
@@ -164,10 +184,10 @@ export function showDividendIncomeForm(accounts, record = null) {
       date,
       description,
       symbol,
-      amount:   parseFloat(amountRaw),
-      roc:      parseFloat(rocInput.value) || 0,
-      capGains: parseFloat(cgInput.value) || 0,
-      income:   parseFloat(incInput.value) || 0,
+      amount:         parseFloat(amountRaw),
+      perShareTotal:  psTotal,
+      perShareRoc:    psRoc,
+      perShareIncome: psIncome,
     };
 
     if (isEdit) {

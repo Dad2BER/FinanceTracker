@@ -428,16 +428,16 @@ export function getDividendIncome() {
   return _data.dividendIncome || [];
 }
 
-function normalizeDivRecord({ accountId, date, description, symbol, amount, roc, capGains, income }) {
+function normalizeDivRecord({ accountId, date, description, symbol, amount, perShareTotal, perShareRoc, perShareIncome }) {
   return {
-    accountId:   accountId || null,
+    accountId:      accountId || null,
     date,
-    description: (description || "").trim(),
-    symbol:      (symbol || "").trim().toUpperCase(),
-    amount:      parseFloat(amount) || 0,
-    roc:         parseFloat(roc) || 0,
-    capGains:    parseFloat(capGains) || 0,
-    income:      parseFloat(income) || 0,
+    description:    (description || "").trim(),
+    symbol:         (symbol || "").trim().toUpperCase(),
+    amount:         parseFloat(amount) || 0,
+    perShareTotal:  parseFloat(perShareTotal) || 0,
+    perShareRoc:    parseFloat(perShareRoc) || 0,
+    perShareIncome: parseFloat(perShareIncome) || 0,
   };
 }
 

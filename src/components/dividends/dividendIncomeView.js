@@ -19,6 +19,19 @@ function fmt(n) {
   return n ? formatCurrency(n) : "—";
 }
 
+// Distributes the transaction Amount into RoC / Income dollar figures using the
+// per-share distribution. shares = amount / perShareTotal; each component is
+// shares × its per-share value. Returns zeros when no per-share total is set.
+export function computeDistribution(rec) {
+  const total = rec.perShareTotal || 0;
+  if (total <= 0) return { roc: 0, income: 0 };
+  const shares = (rec.amount || 0) / total;
+  return {
+    roc:    shares * (rec.perShareRoc || 0),
+    income: shares * (rec.perShareIncome || 0),
+  };
+}
+
 // Entry point — receives accounts from app.js so it can resolve account
 // names and populate the add/edit form.
 export function renderDividendIncome(container, accounts) {
@@ -79,7 +92,6 @@ export function renderDividendIncome(container, accounts) {
         <th>Symbol</th>
         <th class="align-right">Amount</th>
         <th class="align-right">RoC</th>
-        <th class="align-right">Cap. Gains</th>
         <th class="align-right">Income</th>
         <th class="actions-cell"></th>
       </tr>
@@ -93,13 +105,13 @@ export function renderDividendIncome(container, accounts) {
 
     const totals = rows.reduce(
       (t, r) => {
-        t.amount   += r.amount   || 0;
-        t.roc      += r.roc      || 0;
-        t.capGains += r.capGains || 0;
-        t.income   += r.income   || 0;
+        const dist = computeDistribution(r);
+        t.amount += r.amount || 0;
+        t.roc    += dist.roc;
+        t.income += dist.income;
         return t;
       },
-      { amount: 0, roc: 0, capGains: 0, income: 0 }
+      { amount: 0, roc: 0, income: 0 }
     );
 
     const collapsed = _collapsedYears.has(year);
@@ -116,7 +128,6 @@ export function renderDividendIncome(container, accounts) {
       </td>
       <td class="align-right">${formatCurrency(totals.amount)}</td>
       <td class="align-right">${fmt(totals.roc)}</td>
-      <td class="align-right">${fmt(totals.capGains)}</td>
       <td class="align-right">${fmt(totals.income)}</td>
       <td class="actions-cell"></td>
     `;
@@ -128,6 +139,7 @@ export function renderDividendIncome(container, accounts) {
     if (collapsed) rowsBody.style.display = "none";
 
     rows.forEach((r) => {
+      const dist = computeDistribution(r);
       const tr = document.createElement("tr");
       tr.className = "div-income-row";
       tr.innerHTML = `
@@ -136,9 +148,8 @@ export function renderDividendIncome(container, accounts) {
         <td>${escHtml(r.description || "")}</td>
         <td class="div-symbol">${escHtml(r.symbol || "")}</td>
         <td class="align-right">${formatCurrency(r.amount)}</td>
-        <td class="align-right dim">${fmt(r.roc)}</td>
-        <td class="align-right dim">${fmt(r.capGains)}</td>
-        <td class="align-right dim">${fmt(r.income)}</td>
+        <td class="align-right dim">${fmt(dist.roc)}</td>
+        <td class="align-right dim">${fmt(dist.income)}</td>
         <td class="actions-cell">
           <button class="icon-btn" title="Edit">&#9998;</button>
           <button class="icon-btn icon-btn-danger" title="Delete">&#128465;</button>

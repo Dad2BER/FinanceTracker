@@ -97,16 +97,16 @@ def init_db():
             settings_json TEXT NOT NULL DEFAULT '{}'
         );
         CREATE TABLE IF NOT EXISTS dividend_income (
-            id          TEXT PRIMARY KEY,
-            profile_id  TEXT REFERENCES profiles(id) ON DELETE CASCADE,
-            account_id  TEXT,
-            date        TEXT NOT NULL,
-            description TEXT,
-            symbol      TEXT,
-            amount      REAL NOT NULL DEFAULT 0,
-            roc         REAL NOT NULL DEFAULT 0,
-            cap_gains   REAL NOT NULL DEFAULT 0,
-            income      REAL NOT NULL DEFAULT 0
+            id               TEXT PRIMARY KEY,
+            profile_id       TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+            account_id       TEXT,
+            date             TEXT NOT NULL,
+            description      TEXT,
+            symbol           TEXT,
+            amount           REAL NOT NULL DEFAULT 0,
+            per_share_total  REAL NOT NULL DEFAULT 0,
+            per_share_roc    REAL NOT NULL DEFAULT 0,
+            per_share_income REAL NOT NULL DEFAULT 0
         );
     """)
     con.commit()
@@ -172,6 +172,16 @@ def init_db():
         con.commit()
     except sqlite3.OperationalError:
         pass  # Column already exists
+
+    # Add per-share distribution columns to dividend_income.
+    # Earlier versions stored dollar roc/cap_gains/income directly; the per-share
+    # columns supersede them (RoC + Income = Total, distributed by Amount).
+    for col in ("per_share_total", "per_share_roc", "per_share_income"):
+        try:
+            con.execute(f"ALTER TABLE dividend_income ADD COLUMN {col} REAL NOT NULL DEFAULT 0")
+            con.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     # ── Data migrations ────────────────────────────────────────────────────────
     # Rename account_type 'liability' → 'ledger'
@@ -330,15 +340,15 @@ def load_state(profile_id):
     dividend_income = []
     for d in div_rows:
         dividend_income.append({
-            "id":          d["id"],
-            "accountId":   d["account_id"],
-            "date":        d["date"],
-            "description": d["description"] or "",
-            "symbol":      d["symbol"] or "",
-            "amount":      d["amount"],
-            "roc":         d["roc"],
-            "capGains":    d["cap_gains"],
-            "income":      d["income"],
+            "id":             d["id"],
+            "accountId":      d["account_id"],
+            "date":           d["date"],
+            "description":    d["description"] or "",
+            "symbol":         d["symbol"] or "",
+            "amount":         d["amount"],
+            "perShareTotal":  d["per_share_total"],
+            "perShareRoc":    d["per_share_roc"],
+            "perShareIncome": d["per_share_income"],
         })
 
     # ── Profile Settings (retirement inputs, etc.) ────────────────────────────
@@ -477,7 +487,7 @@ def save_state(data, profile_id):
             for d in dividend_income:
                 con.execute(
                     "INSERT INTO dividend_income "
-                    "(id, profile_id, account_id, date, description, symbol, amount, roc, cap_gains, income) "
+                    "(id, profile_id, account_id, date, description, symbol, amount, per_share_total, per_share_roc, per_share_income) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         d["id"],
@@ -487,9 +497,9 @@ def save_state(data, profile_id):
                         d.get("description") or None,
                         d.get("symbol") or None,
                         d.get("amount", 0) or 0,
-                        d.get("roc", 0) or 0,
-                        d.get("capGains", 0) or 0,
-                        d.get("income", 0) or 0,
+                        d.get("perShareTotal", 0) or 0,
+                        d.get("perShareRoc", 0) or 0,
+                        d.get("perShareIncome", 0) or 0,
                     )
                 )
 
