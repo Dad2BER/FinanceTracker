@@ -544,24 +544,33 @@ function navigateTo(newView) {
 function recordDailyValues() {
   if (prices === null) return;
   const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
-  getAccounts().forEach((account) => {
-    let value;
+
+  // A daily snapshot is all-or-nothing. We compute every account's value first
+  // and only commit if EVERY asset account is fully priced. Recording a partial
+  // day (e.g. ledger balances but unpriced asset accounts) makes the net-worth
+  // chart sum only the accounts present, collapsing to the negative credit-card
+  // balances — the exact bug that produced the bogus -$13,842 on 2026-06-23.
+  const snapshots = [];
+  for (const account of getAccounts()) {
     if (account.accountType === "ledger") {
-      value = (account.openingBalance || 0) +
+      const value = (account.openingBalance || 0) +
         (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
+      snapshots.push({ id: account.id, value });
     } else {
-      // Only record asset accounts when all non-cash holdings have a price
       let allPriced = true;
-      value = account.holdings.reduce((sum, h) => {
+      const value = account.holdings.reduce((sum, h) => {
         if (h.assetType === "cash") return sum + h.shares;
         const p = prices[h.symbol];
         if (p === undefined) { allPriced = false; return sum; }
         return sum + p * h.shares;
       }, 0);
+      // If any asset account is missing a price, abort the entire snapshot.
       if (!allPriced) return;
+      snapshots.push({ id: account.id, value });
     }
-    recordAccountValue(account.id, today, value);
-  });
+  }
+
+  snapshots.forEach(({ id, value }) => recordAccountValue(id, today, value));
 }
 
 // ── Price Loading ─────────────────────────────────────────────────────────────
