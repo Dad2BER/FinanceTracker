@@ -45,6 +45,13 @@ let _dollarMode = "current";   // "current" = today's dollars, "future" = 3% inf
 
 const INFLATION = 0.03;        // assumed annual inflation, matches RoR hint
 
+const ROR_VARIANTS = [
+  { delta: +1.0, color: "#22c55e", dash: "6 3", label: "+1%" },
+  { delta: +0.5, color: "#86efac", dash: "3 2", label: "+½%" },
+  { delta: -0.5, color: "#fbbf24", dash: "3 2", label: "−½%" },
+  { delta: -1.0, color: "#f87171", dash: "6 3", label: "−1%" },
+];
+
 function currentNetWorth() {
   let total = 0;
   for (const acct of getAccounts()) {
@@ -83,74 +90,107 @@ function ensureLoaded() {
     ssAge:       saved?.ssAge       ?? ssAge,
     annualSS:    saved?.annualSS    ?? (primary?.monthlyAmount ?? 0) * 12,
     postSSYears: saved?.postSSYears ?? Math.max(1, 95 - ssAge),
+    budget:      saved?.budget      ?? null,
   };
 }
 
 function persistInputs() {
-  const { ror, taxRate, age, ssAge, annualSS, postSSYears } = _b;
-  const inputs = { ror, taxRate, age, ssAge, annualSS, postSSYears };
+  const { ror, taxRate, age, ssAge, annualSS, postSSYears, budget } = _b;
+  const inputs = { ror, taxRate, age, ssAge, annualSS, postSSYears, budget };
   flushBudgetEstInputs(inputs);               // immediate localStorage write
   clearTimeout(_persistTimer);
   _persistTimer = setTimeout(() => saveBudgetEstInputs(inputs), 500); // debounced server POST
 }
 
 // ── Projection data ───────────────────────────────────────────────────────────
-function buildNetWorthProjection(b) {
-  const res = calcResults(b);
-  if (res.monthlyBudget === null) return [];
 
-  const r         = b.ror / 100 / 12;
+// Returns {preDraw, postDraw} monthly portfolio withdrawals.
+// budgetOverride: user-set post-tax monthly spend; null = solve to exhaust portfolio.
+// rorForPmt: annual % used when solving for draws (ignored when budgetOverride set).
+function computeDraws(b, budgetOverride, rorForPmt) {
   const ssMonthly = b.annualSS / 12;
-  const alreadySS = b.ssAge <= b.age;
-  const n1        = alreadySS ? 0 : (b.ssAge - b.age) * 12;
   const n2        = b.postSSYears * 12;
 
-  let postDraw, preDraw;
-  if (alreadySS) {
-    postDraw = pmt(r, n2, b.netWorth);
-    preDraw  = 0;
-  } else {
-    if (res.transitionValue === null) return [];
-    postDraw = pmt(r, n2, Math.max(0, res.transitionValue));
-    preDraw  = postDraw + ssMonthly;
+  if (budgetOverride !== null) {
+    const gross = budgetOverride / Math.max(0.01, 1 - b.taxRate / 100);
+    return { preDraw: gross, postDraw: gross - ssMonthly };
   }
+
+  const r   = rorForPmt / 100 / 12;
+  const res = calcResults(b);
+  if (res.monthlyBudget === null) return null;
+
+  if (b.ssAge <= b.age) {
+    return { preDraw: 0, postDraw: pmt(r, n2, b.netWorth) };
+  }
+  if (res.transitionValue === null) return null;
+  const postDraw = pmt(r, n2, Math.max(0, res.transitionValue));
+  return { preDraw: postDraw + ssMonthly, postDraw };
+}
+
+function buildNetWorthProjection(b, budgetOverride = null) {
+  const r      = b.ror / 100 / 12;
+  const draws  = computeDraws(b, budgetOverride, b.ror);
+  if (!draws) return [];
+
+  const n1 = (b.ssAge <= b.age) ? 0 : (b.ssAge - b.age) * 12;
+  const n2 = b.postSSYears * 12;
 
   const points = [];
   let portfolio = b.netWorth;
   const total   = n1 + n2;
-
   for (let m = 0; m <= total; m++) {
-    if (m % 12 === 0) {
-      points.push({ age: b.age + m / 12, value: portfolio, preSS: m < n1 });
-    }
-    if (m < total) {
-      portfolio = portfolio * (1 + r) - (m < n1 ? preDraw : postDraw);
-    }
+    if (m % 12 === 0) points.push({ age: b.age + m / 12, value: portfolio, preSS: m < n1 });
+    if (m < total) portfolio = portfolio * (1 + r) - (m < n1 ? draws.preDraw : draws.postDraw);
+  }
+  return points;
+}
+
+// Uses the base draw amounts (at base RoR or budgetOverride) but simulates with rorVariant,
+// so variant lines show what happens if returns differ while spending stays the same.
+function buildProjectionFixedDraw(b, rorVariant, budgetOverride = null) {
+  const r     = Math.max(0, rorVariant) / 100 / 12;
+  const draws = computeDraws(b, budgetOverride, b.ror);
+  if (!draws) return [];
+
+  const n1 = (b.ssAge <= b.age) ? 0 : (b.ssAge - b.age) * 12;
+  const n2 = b.postSSYears * 12;
+
+  const points = [];
+  let portfolio = b.netWorth;
+  const total   = n1 + n2;
+  for (let m = 0; m <= total; m++) {
+    if (m % 12 === 0) points.push({ age: b.age + m / 12, value: portfolio, preSS: m < n1 });
+    if (m < total) portfolio = portfolio * (1 + r) - (m < n1 ? draws.preDraw : draws.postDraw);
   }
   return points;
 }
 
 // ── Chart renderer ────────────────────────────────────────────────────────────
-function renderBudgetChart(chartDiv, points, b) {
+function renderBudgetChart(chartDiv, points, b, variants = []) {
   chartDiv.innerHTML = "";
   if (points.length < 2) return;
 
-  const W = 520, H = 210;
+  const W = 520, H = 220;
   const pad = { top: 20, right: 20, bottom: 30, left: 66 };
   const cW  = W - pad.left - pad.right;
   const cH  = H - pad.top  - pad.bottom;
   const n   = points.length;
 
-  const vals    = points.map(p => p.value);
-  const minVal  = Math.min(0, ...vals);
-  const maxVal  = Math.max(...vals);
+  const allVals = [
+    ...points.map(p => p.value),
+    ...variants.flatMap(v => v.points.map(p => p.value)),
+  ];
+  const minVal  = 0;
+  const maxVal  = Math.max(0, ...allVals);
   const ticks   = beNiceScale(minVal, maxVal, 5);
   const niceMin = ticks[0];
   const niceMax = ticks[ticks.length - 1];
   const nRange  = niceMax - niceMin || 1;
 
   const xOf = i => pad.left + (i / (n - 1)) * cW;
-  const yOf = v => pad.top + cH - ((v - niceMin) / nRange) * cH;
+  // clamp at y-axis floor (niceMin=0) so lines don't extend below the chart area
+  const yOf = v => Math.min(pad.top + cH, pad.top + cH - ((v - niceMin) / nRange) * cH);
 
   const PRIMARY = "var(--color-primary)";
   const POST_C  = "var(--color-success, #22c55e)";
@@ -191,6 +231,13 @@ function renderBudgetChart(chartDiv, points, b) {
     svg.appendChild(svgEl("path", { d: lD, fill: "none", stroke: color, "stroke-width": "2", "stroke-linejoin": "round", "stroke-linecap": "round" }));
   }
 
+  // Variant lines (drawn first, behind the main line)
+  for (const v of variants) {
+    if (v.points.length < 2) continue;
+    const lD = v.points.map((p, i) => `${i === 0 ? "M" : "L"} ${xOf(i).toFixed(1)} ${yOf(p.value).toFixed(1)}`).join(" ");
+    svg.appendChild(svgEl("path", { d: lD, fill: "none", stroke: v.color, "stroke-width": "1.5", "stroke-dasharray": v.dash, "stroke-linejoin": "round", "stroke-linecap": "round", opacity: "0.7" }));
+  }
+
   if (!alreadySS && ssIdx > 0) addSegment(0, ssIdx, PRIMARY);
   addSegment(alreadySS ? 0 : ssIdx, n - 1, POST_C);
 
@@ -211,15 +258,49 @@ function renderBudgetChart(chartDiv, points, b) {
     svg.appendChild(lbl);
   }
 
-  // Legend
+  // Depletion crossing labels — mark where any series first crosses below zero
+  const allSeries = [
+    { pts: points, color: POST_C },
+    ...variants.map(v => ({ pts: v.points, color: v.color })),
+  ];
+  const depletionXPositions = new Set();
+  for (const { pts, color } of allSeries) {
+    const idx = pts.findIndex(p => p.value < 0);
+    if (idx < 1) continue;
+    const age = pts[idx].age;
+    if (labelSet.has(age)) continue; // skip if already labelled
+    const x = xOf(idx);
+    // Avoid stacking labels at near-identical x positions (within 4px)
+    const tooClose = [...depletionXPositions].some(ex => Math.abs(ex - x) < 4);
+    if (tooClose) continue;
+    depletionXPositions.add(x);
+    svg.appendChild(svgEl("line", {
+      x1: x.toFixed(1), y1: (pad.top + cH - 4).toFixed(1),
+      x2: x.toFixed(1), y2: (pad.top + cH).toFixed(1),
+      stroke: color, "stroke-width": "1.5",
+    }));
+    const lbl = svgEl("text", { x: x.toFixed(1), y: (H - 4).toFixed(1), "text-anchor": "middle", fill: color, "font-size": "8.5", "font-family": "system-ui,sans-serif" });
+    lbl.textContent = `Age ${age}`;
+    svg.appendChild(lbl);
+  }
+
+  // Legend — row 1: base series; row 2: variants
   const legX = pad.left;
   const legY = pad.top - 6;
-  [[PRIMARY, "Pre-SS"], [POST_C, "Post-SS"]].forEach(([color, label], li) => {
+  [[PRIMARY, "Pre-SS", ""], [POST_C, "Post-SS", ""]].forEach(([color, label], li) => {
     if (alreadySS && li === 0) return;
     const ox = legX + li * 80;
     svg.appendChild(svgEl("line", { x1: ox, y1: legY, x2: ox + 18, y2: legY, stroke: color, "stroke-width": "2.5", "stroke-linecap": "round" }));
     const t = svgEl("text", { x: ox + 22, y: legY + 4, fill: "var(--color-text-dim)", "font-size": "8.5", "font-family": "system-ui,sans-serif" });
     t.textContent = label;
+    svg.appendChild(t);
+  });
+  // Variant legend — right-aligned on the same row as the base legend
+  variants.forEach((v, li) => {
+    const ox = W - pad.right - (variants.length - li) * 52;
+    svg.appendChild(svgEl("line", { x1: ox, y1: legY, x2: ox + 14, y2: legY, stroke: v.color, "stroke-width": "1.5", "stroke-dasharray": v.dash, "stroke-linecap": "round", opacity: "0.8" }));
+    const t = svgEl("text", { x: ox + 18, y: legY + 4, fill: "var(--color-text-dim)", "font-size": "8", "font-family": "system-ui,sans-serif" });
+    t.textContent = v.label;
     svg.appendChild(t);
   });
 
@@ -322,6 +403,11 @@ function calcResults(b) {
 export function renderBudgetEstView(container) {
   ensureLoaded();
 
+  const _initBudget = (() => {
+    const v = _b.budget ?? calcResults(_b).monthlyBudget;
+    return v != null ? v.toFixed(2) : "";
+  })();
+
   container.innerHTML = `
     <div class="budget-est-page">
 
@@ -388,7 +474,24 @@ export function renderBudgetEstView(container) {
       </div>
 
       <div class="budget-est-right">
-        <div id="be-results"></div>
+        <div id="be-results">
+          <div class="ret-section">
+            <div class="ret-section-title">Results</div>
+            <div class="be-result-grid">
+              <div class="be-result-row">
+                <div class="be-result-label">
+                  Post-Tax Monthly Budget
+                  <span id="be-budget-hint" class="be-calc-hint"></span>
+                </div>
+                <div>
+                  <input id="be-budget-input" type="number" class="ret-num-input be-budget-editable" step="100" min="0" value="${_initBudget}" />
+                </div>
+                <div id="be-budget-note" class="be-result-note"></div>
+              </div>
+              <div class="be-result-row" id="be-tv-row"></div>
+            </div>
+          </div>
+        </div>
         <div id="be-chart" class="ret-section be-chart-wrap">
           <div class="be-chart-header">
             <div class="ret-section-title">Portfolio Projection</div>
@@ -404,20 +507,42 @@ export function renderBudgetEstView(container) {
     </div>
   `;
 
-  const resultsDiv = container.querySelector("#be-results");
-
   function renderResults() {
     const res = calcResults(_b);
     const { transitionValue, monthlyBudget } = res;
     const alreadySS = _b.ssAge <= _b.age;
+    const taxFactor = Math.max(0.01, 1 - _b.taxRate / 100);
 
+    // Update the suggested-budget hint in parens
+    const hint = container.querySelector("#be-budget-hint");
+    if (hint) hint.textContent = monthlyBudget !== null ? `(${formatCurrency(monthlyBudget)}/mo)` : "";
+
+    // Populate the input: if empty (e.g. after re-navigation), fill from saved budget or
+    // calculated. If already has a value and no custom budget is set, track the calculation.
+    const budgetInput = container.querySelector("#be-budget-input");
+    if (budgetInput) {
+      if (!budgetInput.value) {
+        const fill = _b.budget ?? monthlyBudget;
+        if (fill != null) budgetInput.value = fill.toFixed(2);
+      } else if (_b.budget === null && monthlyBudget !== null) {
+        budgetInput.value = monthlyBudget.toFixed(2);
+      }
+    }
+
+    // Budget note
+    const effectiveBudget = _b.budget !== null ? _b.budget : monthlyBudget;
+    const budgetNote = container.querySelector("#be-budget-note");
+    if (budgetNote) {
+      budgetNote.innerHTML = effectiveBudget !== null
+        ? `${alreadySS ? "From current portfolio" : "From transition portfolio"} over ${_b.postSSYears} yr + SS
+           &nbsp;·&nbsp; Pre-tax: ${formatCurrency(effectiveBudget / taxFactor)}/mo`
+        : "";
+    }
+
+    // SS Transition End Value row
     const preSSYears = _b.ssAge - _b.age;
     const tvNominal = transitionValue !== null && preSSYears > 0
-      ? transitionValue * Math.pow(1.03, preSSYears)
-      : null;
-    const tvInflAdjDisplay = tvNominal !== null
-      ? `<div class="be-result-label be-infl-adj">${formatCurrency(tvNominal)} in future dollars</div>`
-      : "";
+      ? transitionValue * Math.pow(1.03, preSSYears) : null;
 
     const tvDisplay = alreadySS
       ? `<span class="be-na">N/A</span>`
@@ -425,46 +550,33 @@ export function renderBudgetEstView(container) {
         ? `<span class="be-na">—</span>`
         : `<span class="be-result-val">${formatCurrency(transitionValue)}</span>`;
 
-    const mbDisplay = monthlyBudget === null
-      ? `<span class="be-na">—</span>`
-      : `<span class="be-result-val ${monthlyBudget < 0 ? "be-negative" : ""}">${formatCurrency(monthlyBudget)}/mo</span>`;
-
     const tvNote = alreadySS
       ? "SS is already active — no transition period."
       : transitionValue !== null && transitionValue < 0
         ? "Portfolio depleted before SS — consider lower spending or later SS age."
         : "";
 
-    resultsDiv.innerHTML = `
-      <div class="ret-section">
-        <div class="ret-section-title">Results</div>
-
-        <div class="be-result-grid">
-          <div class="be-result-row">
-            <div class="be-result-label">Post-Tax Monthly Budget</div>
-            <div>${mbDisplay}</div>
-            <div class="be-result-note">
-              ${alreadySS
-                ? `From current portfolio over ${_b.postSSYears} yr + SS`
-                : `From transition portfolio over ${_b.postSSYears} yr + SS`}
-              &nbsp;·&nbsp; Pre-tax: ${monthlyBudget !== null ? formatCurrency(monthlyBudget / Math.max(0.01, 1 - _b.taxRate / 100)) + "/mo" : "—"}
-            </div>
-          </div>
-
-          <div class="be-result-row">
-            <div class="be-result-label">SS Transition End Value</div>
-            <div>${tvDisplay}</div>
-            ${!alreadySS && transitionValue !== null ? tvInflAdjDisplay : ""}
-            ${tvNote ? `<div class="be-result-note">${tvNote}</div>` : ""}
-          </div>
-        </div>
-      </div>
-    `;
+    const tvRow = container.querySelector("#be-tv-row");
+    if (tvRow) {
+      tvRow.innerHTML = `
+        <div class="be-result-label">SS Transition End Value</div>
+        <div>${tvDisplay}</div>
+        ${!alreadySS && tvNominal !== null ? `<div class="be-result-label be-infl-adj">${formatCurrency(tvNominal)} in future dollars</div>` : ""}
+        ${tvNote ? `<div class="be-result-note">${tvNote}</div>` : ""}
+      `;
+    }
   }
 
   const svgWrap = container.querySelector("#be-chart-svg-wrap");
   function refreshChart() {
-    let points = buildNetWorthProjection(_b);
+    let points = buildNetWorthProjection(_b, _b.budget);
+    const variants = ROR_VARIANTS.map(v => {
+      let vpts = buildProjectionFixedDraw(_b, _b.ror + v.delta, _b.budget);
+      if (_dollarMode === "future") {
+        vpts = vpts.map(p => ({ ...p, value: p.value * Math.pow(1 + INFLATION, p.age - _b.age) }));
+      }
+      return { ...v, points: vpts };
+    });
     if (_dollarMode === "future") {
       // Inflate each point from today's dollars to nominal dollars at its age
       points = points.map(p => ({
@@ -472,7 +584,7 @@ export function renderBudgetEstView(container) {
         value: p.value * Math.pow(1 + INFLATION, p.age - _b.age),
       }));
     }
-    renderBudgetChart(svgWrap, points, _b);
+    renderBudgetChart(svgWrap, points, _b, variants);
     container.querySelectorAll("#be-dollar-toggle [data-dollar]").forEach(btn =>
       btn.classList.toggle("active", btn.dataset.dollar === _dollarMode));
   }
@@ -486,6 +598,25 @@ export function renderBudgetEstView(container) {
 
   renderResults();
   refreshChart();
+
+  // Budget input — live editing drives the chart; Escape resets to calculated
+  container.querySelector("#be-budget-input").addEventListener("input", e => {
+    const val = parseFloat(e.target.value);
+    _b.budget = isNaN(val) ? null : val;
+    persistInputs();
+    renderResults();
+    refreshChart();
+  });
+  container.querySelector("#be-budget-input").addEventListener("keydown", e => {
+    if (e.key === "Escape") {
+      _b.budget = null;
+      const res = calcResults(_b);
+      e.target.value = res.monthlyBudget !== null ? res.monthlyBudget.toFixed(2) : "";
+      persistInputs();
+      renderResults();
+      refreshChart();
+    }
+  });
 
   function onChange(e) {
     const id  = e.target.id;
