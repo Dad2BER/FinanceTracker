@@ -13,6 +13,7 @@ import { renderTransactionList } from "./components/ledger/transactionList.js";
 import { renderSettingsView } from "./components/settings/settingsView.js";
 import { renderReportsView }     from "./components/reports/reportsView.js";
 import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
+import { renderTagSpendView } from "./components/reports/tagSpendView.js";
 import { renderAssetsView } from "./components/assets/assetsView.js";
 import { renderDividendIncome } from "./components/dividends/dividendIncomeView.js";
 import { renderRetirementInputs, renderRetirementSimulation } from "./components/retirement/retirementView.js";
@@ -39,6 +40,7 @@ const TAB_PAGES = {
   reports:    [
     { id: "ytd-spending",  label: "Monthly Spend" },
     { id: "subcat-spend",  label: "Subcategory Spend" },
+    { id: "tag-spend",     label: "Tag Spend" },
     { id: "ret-budget-est",  label: "Budget Est." },
   ],
   retirement: [
@@ -60,6 +62,7 @@ const PAGE_TO_SIDEBAR = {
   "div-income":     "div-income",
   "ytd-spending":   "ytd-spending",
   "subcat-spend":   "subcat-spend",
+  "tag-spend":      "tag-spend",
   "ret-inputs":       "ret-inputs",
   "ret-simulation":   "ret-simulation",
   "ret-historic-sim": "ret-historic-sim",
@@ -463,6 +466,8 @@ function render() {
     const _reportOnBack     = () => navigateTo({ tab: "finances", page: "summary" });
     if (view.page === "subcat-spend") {
       renderSubcatSpendView(shellContent, _reportAccounts, _reportCategories, _reportOnBack, getPayees());
+    } else if (view.page === "tag-spend") {
+      renderTagSpendView(shellContent, _reportAccounts, _reportCategories);
     } else if (view.page === "ret-budget-est") {
       renderBudgetEstView(shellContent);
     } else {
