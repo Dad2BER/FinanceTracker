@@ -116,6 +116,8 @@ export function renderLedgersView(container, accounts, categories) {
   const allSubcatNames = categories.flatMap((c) => c.subcategories.map((s) => s.name));
 
   // Columns: Ledger, Date, Payee, Category, Subcategory, Tag, Amount
+  // The Amount column (index 6) has no filter — its filter cell shows the
+  // running total of all visible rows instead.
   attachTableFilter(
     tableWrapper.querySelector("table"),
     [
@@ -125,7 +127,7 @@ export function renderLedgersView(container, accounts, categories) {
       { type: "select", options: categoryNames },
       { type: "select", options: allSubcatNames },
       "text",
-      "text",
+      null,
     ],
     {
       categoryCol: 3,
@@ -134,6 +136,38 @@ export function renderLedgersView(container, accounts, categories) {
     },
     container
   );
+
+  // ── Visible-row total in the filter row's Amount cell ────────────────────────
+  // The Amount filter cell (index 6) is empty — display the sum of every visible
+  // row's amount there and keep it in sync as filters change.
+  const filterRow = tableWrapper.querySelector(".filter-row");
+  const amountTh   = filterRow?.querySelectorAll("th")[6] ?? null;
+  const sumEl      = amountTh ? document.createElement("span") : null;
+  if (amountTh) {
+    amountTh.classList.add("align-right");
+    sumEl.className = "filter-col-sum";
+    amountTh.appendChild(sumEl);
+  }
+
+  function updateVisibleTotal() {
+    if (!sumEl) return;
+    let sum = 0;
+    tableWrapper.querySelectorAll("tbody tr").forEach((row) => {
+      if (row.style.display === "none") return;
+      const text = (row.querySelectorAll("td")[6]?.textContent ?? "").trim();
+      const num  = parseFloat(text.replace(/[$,]/g, ""));
+      if (!isNaN(num)) sum += num;
+    });
+    sumEl.textContent = formatAmount(sum);
+  }
+
+  // Initial total (all rows visible). The table-level listener fires after the
+  // filterRow's applyFilters via event bubbling, so the total reflects the
+  // post-filter visibility.
+  updateVisibleTotal();
+  const table = tableWrapper.querySelector("table");
+  table.addEventListener("input", updateVisibleTotal);
+  table.addEventListener("change", updateVisibleTotal);
 
   container.appendChild(tableWrapper);
 }
