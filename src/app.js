@@ -10,6 +10,7 @@ import { showManualPriceModal } from "./components/ui/manualPriceModal.js";
 import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
 import { renderTransactionList } from "./components/ledger/transactionList.js";
+import { renderLedgersView } from "./components/ledger/ledgersView.js";
 import { renderSettingsView } from "./components/settings/settingsView.js";
 import { renderReportsView }     from "./components/reports/reportsView.js";
 import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
@@ -35,6 +36,7 @@ const TAB_PAGES = {
   finances:   [
     { id: "summary",    label: "Portfolio" },
     { id: "assets",     label: "Assets" },
+    { id: "ledgers",    label: "Ledgers" },
     { id: "div-income", label: "Div. Income" },
   ],
   reports:    [
@@ -59,6 +61,7 @@ const PAGE_TO_SIDEBAR = {
   "account-detail": "summary",
   "ledger-detail":  "summary",
   "assets":         "assets",
+  "ledgers":        "ledgers",
   "div-income":     "div-income",
   "ytd-spending":   "ytd-spending",
   "subcat-spend":   "subcat-spend",
@@ -444,6 +447,8 @@ function render() {
         pricesLoading,
         pricesError
       );
+    } else if (view.page === "ledgers") {
+      renderLedgersView(shellContent, getAccounts(), getCategories());
     } else if (view.page === "div-income") {
       renderDividendIncome(shellContent, getAccounts());
     } else if (view.page === "ledger-detail") {
