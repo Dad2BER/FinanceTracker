@@ -3,6 +3,7 @@ import { createLoadingSpinner } from "../ui/loadingSpinner.js";
 import { attachTableFilter } from "../../utils/tableFilter.js";
 import { Modal } from "../ui/modal.js";
 import { updateDividendBySymbol } from "../../state.js";
+import { createPieChart } from "../dashboard/pieChart.js";
 
 // ── Label maps ────────────────────────────────────────────────────────────────
 const ORIGIN_LABELS = { domestic: "Domestic", international: "International" };
@@ -21,6 +22,26 @@ const INSTRUMENT_LABELS = {
   stock:          "Stock",
   cash:           "Cash",
   "money-market": "Money Market",
+};
+
+// ── Pie chart meta (label + color) ──────────────────────────────────────────────
+const TAX_TYPE_META = {
+  "Taxable":      { label: "Taxable",      color: "#3b82f6" },
+  "Tax-Free":     { label: "Tax-Free",     color: "#22c55e" },
+  "Tax-Deferred": { label: "Tax-Deferred", color: "#f59e0b" },
+};
+
+const ORIGIN_META = {
+  domestic:      { label: "Domestic",      color: "#3b82f6" },
+  international: { label: "International", color: "#f59e0b" },
+};
+
+const ASSET_CLASS_META = {
+  equity:        { label: "Equity",       color: "#6366f1" },
+  bonds:         { label: "Bonds",        color: "#22c55e" },
+  "real-estate": { label: "Real Estate",  color: "#f59e0b" },
+  crypto:        { label: "Crypto",       color: "#f97316" },
+  cash:          { label: "Cash",         color: "#64748b" },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -47,11 +68,17 @@ function buildDpBadge(dp) {
  * Each entry tracks total shares and the set of origins/types seen,
  * so we can show a unified value or "—" when accounts disagree.
  */
+function addShares(map, key, shares) {
+  if (!key) return;
+  map.set(key, (map.get(key) ?? 0) + shares);
+}
+
 function aggregateHoldings(accounts) {
   const map = new Map();
   const assetAccounts = accounts.filter((a) => a.accountType !== "ledger");
 
   assetAccounts.forEach((account) => {
+    const taxType = account.taxType;
     (account.holdings || []).forEach((h) => {
       if (map.has(h.symbol)) {
         const e = map.get(h.symbol);
@@ -63,8 +90,11 @@ function aggregateHoldings(accounts) {
         if (!e.dividendPerShare && h.dividendPerShare > 0) e.dividendPerShare = h.dividendPerShare;
         // DRIP: true only if ALL holdings of this symbol are reinvested
         if (!h.dividendReinvested) e.dividendReinvested = false;
+        addShares(e.sharesByTaxType, taxType, h.shares);
+        addShares(e.sharesByOrigin, h.origin, h.shares);
+        addShares(e.sharesByType, h.assetType, h.shares);
       } else {
-        map.set(h.symbol, {
+        const e = {
           symbol:             h.symbol,
           shares:             h.shares,
           isCash:             h.assetType === "cash",
@@ -73,7 +103,17 @@ function aggregateHoldings(accounts) {
           instruments:        new Set(h.instrumentType ? [h.instrumentType] : []),
           dividendPerShare:   (h.dividendPerShare > 0) ? h.dividendPerShare : null,
           dividendReinvested: h.dividendReinvested ?? false,
-        });
+          // Per-breakdown share totals, since a symbol can span multiple accounts
+          // (e.g. same fund held in both a Taxable and a Tax-Deferred account) —
+          // used to split this symbol's value across pie-chart slices.
+          sharesByTaxType: new Map(),
+          sharesByOrigin:  new Map(),
+          sharesByType:    new Map(),
+        };
+        addShares(e.sharesByTaxType, taxType, h.shares);
+        addShares(e.sharesByOrigin, h.origin, h.shares);
+        addShares(e.sharesByType, h.assetType, h.shares);
+        map.set(h.symbol, e);
       }
     });
   });
@@ -201,6 +241,85 @@ function showDividendModal(symbol, currentDps, currentDrip) {
   setTimeout(() => input.focus(), 50);
 }
 
+// ── Summary pie chart helpers ────────────────────────────────────────────────
+
+function addValue(map, key, value) {
+  if (!key) return;
+  map.set(key, (map.get(key) ?? 0) + value);
+}
+
+function buildSlices(map, metaMap) {
+  return [...map.entries()]
+    .map(([key, value]) => {
+      const meta = metaMap[key] || { label: key, color: "#94a3b8" };
+      return { label: meta.label, value, color: meta.color };
+    })
+    .sort((a, b) => b.value - a.value);
+}
+
+function buildChartCard(title) {
+  const card = document.createElement("div");
+  card.className = "summary-card";
+  const h3 = document.createElement("h3");
+  h3.textContent = title;
+  card.appendChild(h3);
+  const body = document.createElement("div");
+  card.appendChild(body);
+  return { card, body };
+}
+
+function buildLoadingChartCard(title) {
+  const card = document.createElement("div");
+  card.className = "summary-card";
+  const h3 = document.createElement("h3");
+  h3.textContent = title;
+  card.appendChild(h3);
+  const loadRow = document.createElement("div");
+  loadRow.className = "chart-loading";
+  loadRow.appendChild(createLoadingSpinner());
+  const span = document.createElement("span");
+  span.textContent = "Loading prices…";
+  loadRow.appendChild(span);
+  card.appendChild(loadRow);
+  return card;
+}
+
+function renderChartBody(body, slices) {
+  const total = slices.reduce((sum, s) => sum + s.value, 0);
+  body.innerHTML = "";
+
+  const wrap = document.createElement("div");
+  wrap.className = "pie-chart-wrap";
+  wrap.appendChild(createPieChart(slices, total));
+
+  const legend = document.createElement("div");
+  legend.className = "pie-legend";
+  const activeSlices = slices.filter((s) => s.value > 0);
+
+  if (activeSlices.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "dim";
+    empty.style.fontSize = "0.8rem";
+    empty.textContent = "No matching rows";
+    legend.appendChild(empty);
+  } else {
+    activeSlices.forEach((slice) => {
+      const pct = total > 0 ? ((slice.value / total) * 100).toFixed(1) : "0.0";
+      const item = document.createElement("div");
+      item.className = "legend-item";
+      item.innerHTML = `
+        <span class="legend-dot" style="background:${slice.color}"></span>
+        <span class="legend-label">${escHtml(slice.label)} (${formatCurrency(slice.value)})</span>
+        <span class="legend-pct">${pct}%</span>
+      `;
+      legend.appendChild(item);
+    });
+  }
+
+  wrap.appendChild(legend);
+  body.appendChild(wrap);
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 /**
@@ -306,6 +425,28 @@ export function renderAssetsView(
   }
   container.appendChild(totalEl);
 
+  // ── Summary pie charts (Tax Treatment / Origin / Asset Class) ────────────────
+  // These reflect only the rows currently visible in the table below — they are
+  // recomputed whenever the table's filters change.
+  const chartsGrid = document.createElement("div");
+  chartsGrid.className = "assets-charts-grid";
+
+  let taxChartBody = null, originChartBody = null, classChartBody = null;
+  if (pricesLoading) {
+    chartsGrid.appendChild(buildLoadingChartCard("By Tax Treatment"));
+    chartsGrid.appendChild(buildLoadingChartCard("By Origin"));
+    chartsGrid.appendChild(buildLoadingChartCard("By Asset Class"));
+  } else {
+    const taxCard    = buildChartCard("By Tax Treatment");
+    const originCard = buildChartCard("By Origin");
+    const classCard  = buildChartCard("By Asset Class");
+    taxChartBody    = taxCard.body;
+    originChartBody = originCard.body;
+    classChartBody  = classCard.body;
+    chartsGrid.append(taxCard.card, originCard.card, classCard.card);
+  }
+  container.appendChild(chartsGrid);
+
   // ── Table ───────────────────────────────────────────────────────────────────
   const tableWrapper = document.createElement("div");
   tableWrapper.className = "table-wrapper";
@@ -328,8 +469,11 @@ export function renderAssetsView(
   `;
 
   const tbody = tableWrapper.querySelector("tbody");
+  const rowEntryMap = new Map();
   entries.forEach((entry) => {
-    tbody.appendChild(buildRow(entry, prices, quoteDetails, pricesLoading));
+    const row = buildRow(entry, prices, quoteDetails, pricesLoading);
+    rowEntryMap.set(row, entry);
+    tbody.appendChild(row);
   });
 
   // Columns: Symbol, Shares, Origin, Asset Class, Instrument, Dividend, Price, Value
@@ -337,6 +481,35 @@ export function renderAssetsView(
     tableWrapper.querySelector("table"),
     [true, false, true, true, true, false, false, false]
   );
+
+  // ── Recompute pie charts from currently-visible rows only ────────────────────
+  function updateCharts() {
+    if (!taxChartBody) return; // prices still loading — spinner cards shown instead
+
+    const byTax = new Map(), byOrigin = new Map(), byClass = new Map();
+    tableWrapper.querySelectorAll("tbody tr").forEach((row) => {
+      if (row.style.display === "none") return;
+      const entry = rowEntryMap.get(row);
+      if (!entry) return;
+      const price = entry.isCash ? 1 : (prices ? prices[entry.symbol] : undefined);
+      if (price === undefined) return;
+      entry.sharesByTaxType.forEach((sh, key) => addValue(byTax, key, sh * price));
+      entry.sharesByOrigin.forEach((sh, key) => addValue(byOrigin, key, sh * price));
+      entry.sharesByType.forEach((sh, key) => addValue(byClass, key, sh * price));
+    });
+
+    const taxSlices    = buildSlices(byTax, TAX_TYPE_META);
+    const originSlices = buildSlices(byOrigin, ORIGIN_META);
+    const classSlices  = buildSlices(byClass, ASSET_CLASS_META);
+
+    renderChartBody(taxChartBody, taxSlices);
+    renderChartBody(originChartBody, originSlices);
+    renderChartBody(classChartBody, classSlices);
+  }
+
+  updateCharts();
+  tableWrapper.querySelector("table").addEventListener("input",  updateCharts);
+  tableWrapper.querySelector("table").addEventListener("change", updateCharts);
 
   // ── Visible-row value sum in the filter row's Value cell ─────────────────────
   // The filter row's last <th> (Value column, index 7) is an empty cell — we
