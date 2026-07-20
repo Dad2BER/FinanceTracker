@@ -221,6 +221,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
         date:        tx.date || "",
         category:    selCat?.name || "",
         subcategory: subcatNameMap.get(tx.subcategoryId) || "Uncategorized",
+        tag:         tx.tag || "",
         amount:      Math.abs(tx.amount),
       });
     });
@@ -509,10 +510,19 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
 
   const table = document.createElement("table");
   table.className = "subcat-tx-table";
-  table.innerHTML = `<thead><tr>
-    <th>Account</th><th>Date</th><th>Payee</th>
-    <th>Category</th><th>Subcategory</th><th class="subcat-tx-amt">Amount</th>
-  </tr></thead>`;
+  table.innerHTML = `<thead>
+    <tr>
+      <th>Account</th><th>Date</th><th>Payee</th>
+      <th>Category</th><th>Subcategory</th><th>Tag</th><th class="subcat-tx-amt">Amount</th>
+    </tr>
+    <tr class="filter-row">
+      <th></th><th></th>
+      <th><input type="text" class="filter-input" placeholder="Filter…" id="subcat-tx-filter-payee"></th>
+      <th></th><th></th>
+      <th><input type="text" class="filter-input" placeholder="Filter…" id="subcat-tx-filter-tag"></th>
+      <th></th>
+    </tr>
+  </thead>`;
 
   // Group rows by month (YYYY-MM), months descending
   const monthGroups = new Map();
@@ -522,6 +532,9 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     monthGroups.get(mo).push(row);
   });
   const sortedMonths = [...monthGroups.keys()].sort((a, b) => b.localeCompare(a));
+
+  // Per-month refs, used by applyTxFilters() below to recompute visible totals.
+  const monthRefs = [];
 
   sortedMonths.forEach(mo => {
     const rows      = monthGroups.get(mo);
@@ -535,12 +548,13 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     const headTr    = document.createElement("tr");
     headTr.className = "subcat-tx-month-head";
     headTr.innerHTML = `
-      <td colspan="5">
+      <td colspan="6">
         <span class="subcat-tx-chevron">${collapsed ? "▶" : "▼"}</span>
         ${moLabel}
       </td>
       <td class="subcat-tx-amt">${formatCurrency(moTotal)}</td>
     `;
+    const amtCell = headTr.querySelector(".subcat-tx-amt");
     headTr.addEventListener("click", () => {
       if (_collapsedMonths.has(mo)) {
         _collapsedMonths.delete(mo);
@@ -558,6 +572,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
     // Month data rows
     const tbodyRows = document.createElement("tbody");
     if (collapsed) tbodyRows.style.display = "none";
+    const trs = [];
     rows.forEach(row => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -566,14 +581,44 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
         <td>${row.payee}</td>
         <td>${row.category}</td>
         <td>${row.subcategory}</td>
+        <td>${row.tag}</td>
         <td class="subcat-tx-amt">${formatCurrency(row.amount)}</td>
       `;
       tbodyRows.appendChild(tr);
+      trs.push(tr);
     });
     table.appendChild(tbodyRows);
+
+    monthRefs.push({ tbodyHead, rows, trs, amtCell });
   });
 
   tableWrap.appendChild(table);
   tableSection.appendChild(tableWrap);
+
+  // ── Payee / Tag filters ───────────────────────────────────────────────────
+  const payeeFilterInput = table.querySelector("#subcat-tx-filter-payee");
+  const tagFilterInput   = table.querySelector("#subcat-tx-filter-tag");
+
+  function applyTxFilters() {
+    const payeeVal = payeeFilterInput.value.trim().toLowerCase();
+    const tagVal   = tagFilterInput.value.trim().toLowerCase();
+
+    monthRefs.forEach(({ tbodyHead, rows, trs, amtCell }) => {
+      let visibleTotal = 0;
+      let anyVisible = false;
+      rows.forEach((row, i) => {
+        const visible =
+          (!payeeVal || row.payee.toLowerCase().includes(payeeVal)) &&
+          (!tagVal || row.tag.toLowerCase().includes(tagVal));
+        trs[i].style.display = visible ? "" : "none";
+        if (visible) { anyVisible = true; visibleTotal += row.amount; }
+      });
+      amtCell.textContent = formatCurrency(visibleTotal);
+      tbodyHead.style.display = anyVisible ? "" : "none";
+    });
+  }
+
+  payeeFilterInput.addEventListener("input", applyTxFilters);
+  tagFilterInput.addEventListener("input", applyTxFilters);
   container.appendChild(tableSection);
 }
