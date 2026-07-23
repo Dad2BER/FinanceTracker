@@ -1,4 +1,4 @@
-import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState, recordAccountValue, updateHoldingDividend } from "./state.js";
+import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState, recordAccountValues, updateHoldingDividend } from "./state.js";
 import { fetchQuotes } from "./services/prices.js";
 import { fetchDividendMetric } from "./services/finnhub.js";
 import {
@@ -580,7 +580,7 @@ function recordDailyValues() {
     }
   }
 
-  snapshots.forEach(({ id, value }) => recordAccountValue(id, today, value));
+  recordAccountValues(snapshots.map(({ id, value }) => ({ accountId: id, date: today, value })));
 }
 
 // ── Price Loading ─────────────────────────────────────────────────────────────

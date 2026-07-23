@@ -145,20 +145,32 @@ export function deleteAccount(id) {
 // ── Value History ─────────────────────────────────────────────────────────────
 
 /**
- * Upserts a daily value snapshot for an account.
+ * Upserts daily value snapshots for one or more accounts in a single save.
+ * Each POST to /api/data fully replaces the profile's stored data, and the
+ * server handles requests concurrently — firing one saveData() per account
+ * (as this used to do via a per-account call) sends several overlapping
+ * full-state writes whose completion order isn't guaranteed, so a
+ * still-in-flight earlier (less complete) request can land last and wipe
+ * out later accounts' updates. Batching into one call/one save avoids that
+ * race entirely.
+ *
  * Intentionally does NOT call notify() — recording history must not
  * trigger re-renders or it would create an infinite loop.
  */
-export function recordAccountValue(accountId, date, value) {
+export function recordAccountValues(entries) {
+  // entries: [{ accountId, date, value }]
+  const byAccount = new Map(entries.map((e) => [e.accountId, e]));
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) => {
-      if (a.id !== accountId) return a;
+      const entry = byAccount.get(a.id);
+      if (!entry) return a;
       const history = a.valueHistory || [];
-      const idx = history.findIndex((e) => e.date === date);
+      const idx = history.findIndex((e) => e.date === entry.date);
+      const newEntry = { date: entry.date, value: entry.value };
       const newHistory = idx >= 0
-        ? history.map((e, i) => (i === idx ? { date, value } : e))
-        : [...history, { date, value }];
+        ? history.map((e, i) => (i === idx ? newEntry : e))
+        : [...history, newEntry];
       return { ...a, valueHistory: newHistory };
     }),
   };
