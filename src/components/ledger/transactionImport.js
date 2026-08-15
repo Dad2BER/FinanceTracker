@@ -38,19 +38,24 @@ function parseCSV(text) {
 
 function autoDetectColumns(headers) {
   const h = headers.map((x) => x.toLowerCase().trim());
-  function findFirst(patterns) {
+  function findFirst(patterns, excludeIdx = []) {
     for (const p of patterns) {
-      const idx = h.findIndex((col) => col === p || col.includes(p));
+      const idx = h.findIndex((col, i) => !excludeIdx.includes(i) && (col === p || col.includes(p)));
       if (idx !== -1) return idx;
     }
     return -1;
   }
   const dateCol = findFirst(["transaction date", "trans date", "trans. date", "date"]);
   const descCol = findFirst(["description", "memo", "details", "payee", "merchant", "narrative"]);
-  const amountCol = findFirst(["amount", "transaction amount"]);
-  const debitCol = findFirst(["debit", "withdrawal", "withdrawals", "charge", "charges"]);
-  const creditCol = findFirst(["credit", "deposit", "deposits", "payment"]);
-  return { dateCol, descCol, amountCol, debitCol, creditCol };
+  // A single indicator column (e.g. "Credit or Debit") that labels the sign of a separate Amount
+  // column. Detected first and excluded from the debit/credit split-column search below, since
+  // its header text ("credit or debit") would otherwise false-match both of those patterns.
+  const typeCol = findFirst(["credit or debit", "debit or credit", "transaction type", "trans type", "dr/cr", "cr/dr"]);
+  const excl = typeCol !== -1 ? [typeCol] : [];
+  const amountCol = findFirst(["amount", "transaction amount"], excl);
+  const debitCol = findFirst(["debit", "withdrawal", "withdrawals", "charge", "charges"], excl);
+  const creditCol = findFirst(["credit", "deposit", "deposits", "payment"], excl);
+  return { dateCol, descCol, amountCol, debitCol, creditCol, typeCol };
 }
 
 function parseDate(str) {
@@ -192,6 +197,8 @@ export function showImportModal(accountId, categories, payees, existingTransacti
     const dataRows = _csvRows.slice(1).filter((r) => r.some((f) => f.trim()));
     const det = autoDetectColumns(headers);
     const hasSplit = det.debitCol !== -1 || det.creditCol !== -1;
+    const hasType = det.typeCol !== -1 && det.amountCol !== -1;
+    const defaultMode = hasSplit ? "split" : hasType ? "type" : "single";
 
     function buildSel(id, selectedIdx, includeNone = false) {
       const none = includeNone
@@ -219,20 +226,33 @@ export function showImportModal(accountId, categories, payees, existingTransacti
       </div>
       <div class="form-group">
         <label>Amount Format</label>
-        <div style="display:flex;gap:1.5rem;margin-top:0.3rem;">
+        <div style="display:flex;gap:1.5rem;margin-top:0.3rem;flex-wrap:wrap;">
           <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400;cursor:pointer;">
-            <input type="radio" name="imp-amt-type" value="single" ${!hasSplit ? "checked" : ""}> Single amount column
+            <input type="radio" name="imp-amt-type" value="single" ${defaultMode === "single" ? "checked" : ""}> Single amount column
           </label>
           <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400;cursor:pointer;">
-            <input type="radio" name="imp-amt-type" value="split" ${hasSplit ? "checked" : ""}> Separate Debit / Credit columns
+            <input type="radio" name="imp-amt-type" value="type" ${defaultMode === "type" ? "checked" : ""}> Amount + Debit/Credit column
+          </label>
+          <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400;cursor:pointer;">
+            <input type="radio" name="imp-amt-type" value="split" ${defaultMode === "split" ? "checked" : ""}> Separate Debit / Credit columns
           </label>
         </div>
       </div>
-      <div id="imp-single-wrap" class="form-group" ${hasSplit ? 'style="display:none"' : ""}>
+      <div id="imp-single-wrap" class="form-group" ${defaultMode !== "single" ? 'style="display:none"' : ""}>
         <label for="imp-amount-col">Amount Column</label>
         ${buildSel("imp-amount-col", det.amountCol !== -1 ? det.amountCol : 0)}
       </div>
-      <div id="imp-split-wrap" ${!hasSplit ? 'style="display:none"' : ""}>
+      <div id="imp-type-wrap" ${defaultMode !== "type" ? 'style="display:none"' : ""}>
+        <div class="form-group">
+          <label for="imp-type-amount-col">Amount Column</label>
+          ${buildSel("imp-type-amount-col", det.amountCol !== -1 ? det.amountCol : 0)}
+        </div>
+        <div class="form-group">
+          <label for="imp-type-col">Debit/Credit Column <span style="font-weight:400">(e.g. "Credit or Debit")</span></label>
+          ${buildSel("imp-type-col", det.typeCol !== -1 ? det.typeCol : 0)}
+        </div>
+      </div>
+      <div id="imp-split-wrap" ${defaultMode !== "split" ? 'style="display:none"' : ""}>
         <div class="form-group">
           <label for="imp-debit-col">Debit Column <span style="font-weight:400">(charges / purchases — stored as negative)</span></label>
           ${buildSel("imp-debit-col", det.debitCol !== -1 ? det.debitCol : 0, true)}
@@ -257,9 +277,12 @@ export function showImportModal(accountId, categories, payees, existingTransacti
       const type = el.querySelector("input[name='imp-amt-type']:checked").value;
       return {
         type,
-        amtCol: type === "single" ? parseInt(el.querySelector("#imp-amount-col")?.value ?? "-1") : -1,
+        amtCol: type === "single" ? parseInt(el.querySelector("#imp-amount-col")?.value ?? "-1")
+          : type === "type" ? parseInt(el.querySelector("#imp-type-amount-col")?.value ?? "-1")
+          : -1,
         debitCol: type === "split" ? parseInt(el.querySelector("#imp-debit-col").value) : -1,
         creditCol: type === "split" ? parseInt(el.querySelector("#imp-credit-col").value) : -1,
+        typeCol: type === "type" ? parseInt(el.querySelector("#imp-type-col")?.value ?? "-1") : -1,
       };
     }
 
@@ -272,6 +295,14 @@ export function showImportModal(accountId, categories, payees, existingTransacti
         // Debits (charges) → stored as negative; Credits (payments) → stored as positive
         if (d !== null && d !== 0) return -Math.abs(d);
         if (c !== null && c !== 0) return Math.abs(c);
+        return null;
+      } else if (cfg.type === "type" && cfg.amtCol >= 0) {
+        const amt = parseAmount(row[cfg.amtCol]);
+        if (amt === null) return null;
+        const label = (row[cfg.typeCol] || "").toLowerCase();
+        // Debit → negative (money out); Credit → positive (money in)
+        if (/debit/.test(label)) return -Math.abs(amt);
+        if (/credit/.test(label)) return Math.abs(amt);
         return null;
       }
       return null;
@@ -301,9 +332,10 @@ export function showImportModal(accountId, categories, payees, existingTransacti
 
     el.querySelectorAll("input[name='imp-amt-type']").forEach((r) =>
       r.addEventListener("change", () => {
-        const single = el.querySelector("input[name='imp-amt-type']:checked").value === "single";
-        el.querySelector("#imp-single-wrap").style.display = single ? "" : "none";
-        el.querySelector("#imp-split-wrap").style.display = single ? "none" : "";
+        const mode = el.querySelector("input[name='imp-amt-type']:checked").value;
+        el.querySelector("#imp-single-wrap").style.display = mode === "single" ? "" : "none";
+        el.querySelector("#imp-type-wrap").style.display = mode === "type" ? "" : "none";
+        el.querySelector("#imp-split-wrap").style.display = mode === "split" ? "" : "none";
         updatePreview();
       })
     );
