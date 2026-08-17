@@ -235,7 +235,7 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
 - "⇧ Import" on the Div. Income page opens a 2-step modal: (1) pick Financial Institution + Account + CSV file, (2) review/deselect parsed rows and import.
 - One parser per institution in an `INSTITUTIONS` map (currently `etrade`, `schwab`) — each institution's CSV layout is bespoke and hardcoded, not user-configurable column mapping like the ledger importer.
 - Only actual dividend / interest-income rows are kept: buys, sells, transfers, and reinvestment-purchase rows are filtered out per-institution (e.g. eTrade labels both a dividend and its reinvestment purchase as Activity Type "Dividend" — the purchase side is distinguished only by a negative Amount, so `amount > 0` is required).
-- A row is a duplicate (pre-unchecked, like the ledger importer) if an existing `DividendIncome` record matches on **institution + date + symbol + amount** — see `buildExistingKeys`/`dupKey` in `dividendImport.js`.
+- A row is a duplicate (pre-unchecked, like the ledger importer) if an existing `DividendIncome` record matches on **account + date + symbol + amount** — see `buildExistingKeys`/`dupKey` in `dividendImport.js`. Deliberately *not* keyed on `institution`: manual entries (and anything imported before this feature existed) have no `institution` value, so requiring it meant those rows could never be recognized as duplicates of a later import — this caused real duplicate rows in production before being caught and fixed.
 - Shares `parseCSV` from `src/utils/csv.js` with the ledger transaction importer (`transactionImport.js`).
 
 ### RocRate (`Settings → Return of Capital`)

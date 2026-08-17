@@ -127,15 +127,18 @@ const INSTITUTIONS = {
 // institution (manual entries, or entries predating this feature) never match,
 // since imported rows always carry a real institution value.
 
-function dupKey(institution, date, symbol, amount) {
-  return `${institution}||${date}||${(symbol || "").toUpperCase()}||${amount.toFixed(2)}`;
+// Keyed on account + date + symbol + amount (not institution — existing
+// records entered manually, or imported before this feature existed, have no
+// institution value, and requiring one meant they could never be recognized
+// as duplicates of a later import).
+function dupKey(accountId, date, symbol, amount) {
+  return `${accountId}||${date}||${(symbol || "").toUpperCase()}||${amount.toFixed(2)}`;
 }
 
 function buildExistingKeys(existingRecords) {
   const set = new Set();
   for (const r of existingRecords) {
-    if (!r.institution) continue;
-    set.add(dupKey(r.institution, r.date, r.symbol, r.amount || 0));
+    set.add(dupKey(r.accountId, r.date, r.symbol, r.amount || 0));
   }
   return set;
 }
@@ -259,7 +262,7 @@ export function showDividendImportModal(accounts, existingRecords = []) {
   function step2(institutionKey, accountId, parsedRows) {
     const existingKeys = buildExistingKeys(existingRecords);
     const rows = parsedRows.map((r) => {
-      const isDuplicate = existingKeys.has(dupKey(institutionKey, r.date, r.symbol, r.amount));
+      const isDuplicate = existingKeys.has(dupKey(accountId, r.date, r.symbol, r.amount));
       return { ...r, isDuplicate, skip: isDuplicate };
     });
 
