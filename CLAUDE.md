@@ -67,6 +67,7 @@ retirement
 
 settings
   ├── settings-profiles    (Profiles)
+  ├── settings-accounts    (Accounts — Hide/Show on Portfolio page)
   ├── settings-api-keys    (API Keys)
   ├── settings-database    (Database backup/restore)
   └── settings-categories  (Categories & Payees)
@@ -86,6 +87,7 @@ initState(data, profileId)      // called by app.js after async load
 subscribe(fn)                   // returns unsubscribe fn
 getAccounts() / getAccount(id)
 addAccount / updateAccount / deleteAccount
+toggleAccountHidden(id)         // hides/shows an account on the Portfolio page only; data untouched elsewhere
 addHolding / updateHolding / deleteHolding
 addTransaction / updateTransaction / deleteTransaction
 addCategory / updateCategory / deleteCategory
@@ -160,6 +162,7 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
   holdings: Holding[],          // asset accounts
   transactions: Transaction[],  // ledger accounts
   valueHistory: { date, value }[],
+  hidden: boolean,              // optional — excludes from Portfolio page only; data stays intact everywhere else
 }
 ```
 

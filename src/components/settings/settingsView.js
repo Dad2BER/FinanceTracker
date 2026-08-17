@@ -5,7 +5,7 @@ import {
   addCategory, updateCategory, deleteCategory,
   addSubcategory, updateSubcategory, deleteSubcategory,
   addPayee, updatePayee, deletePayee,
-  getCategories, getPayees,
+  getCategories, getPayees, toggleAccountHidden,
 } from "../../state.js";
 
 // ── Module-level selection state (persists across re-renders) ─────────────────
@@ -241,6 +241,70 @@ export function renderSettingsProfiles(container, profileProps) {
   profileSection.appendChild(addProfileRow);
 
   container.appendChild(profileSection);
+}
+
+// ── Accounts ─────────────────────────────────────────────────────────────────
+
+function formatAccountType(account) {
+  if (account.accountType === "ledger") return "Ledger";
+  return account.taxType || "Asset";
+}
+
+export function renderSettingsAccounts(container, accounts) {
+  container.innerHTML = "";
+  renderPageHeader(container, "Accounts");
+
+  if (accounts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "dim";
+    empty.style.cssText = "font-size:0.88rem;padding:1rem 0;";
+    empty.textContent = "No accounts yet.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const section = document.createElement("div");
+  section.className = "settings-accounts-section";
+
+  const list = document.createElement("div");
+  list.className = "settings-account-list";
+
+  [...accounts]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((account) => {
+      const row = document.createElement("div");
+      row.className = "settings-account-row" + (account.hidden ? " hidden" : "");
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "settings-account-name";
+      nameSpan.textContent = account.name;
+
+      const typeSpan = document.createElement("span");
+      typeSpan.className = "settings-account-type";
+      typeSpan.textContent = formatAccountType(account);
+
+      const toggleBtn = document.createElement("button");
+      toggleBtn.className = "btn btn-secondary btn-sm";
+      toggleBtn.textContent = account.hidden ? "Show" : "Hide";
+      toggleBtn.title = account.hidden
+        ? "Show this account on the Portfolio page"
+        : "Hide this account from the Portfolio page";
+      toggleBtn.addEventListener("click", () => toggleAccountHidden(account.id));
+
+      row.appendChild(nameSpan);
+      row.appendChild(typeSpan);
+      row.appendChild(toggleBtn);
+      list.appendChild(row);
+    });
+
+  section.appendChild(list);
+  container.appendChild(section);
+
+  const hint = document.createElement("p");
+  hint.className = "dim";
+  hint.style.cssText = "font-size:0.8rem;margin-top:0.75rem;";
+  hint.textContent = "Hidden accounts are removed from the Portfolio page only — their holdings, transactions, and history remain available everywhere else.";
+  container.appendChild(hint);
 }
 
 // ── API Keys ─────────────────────────────────────────────────────────────────

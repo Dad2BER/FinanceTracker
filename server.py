@@ -47,7 +47,8 @@ def init_db():
             tax_type        TEXT NOT NULL,
             account_type    TEXT NOT NULL DEFAULT 'asset',
             opening_balance REAL NOT NULL DEFAULT 0,
-            created_at      TEXT NOT NULL
+            created_at      TEXT NOT NULL,
+            hidden          INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS holdings (
             id                   TEXT PRIMARY KEY,
@@ -173,6 +174,14 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Add hidden to accounts (excludes closed accounts from the Portfolio page
+    # while keeping their historical data intact everywhere else)
+    try:
+        con.execute("ALTER TABLE accounts ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     # Add per-share distribution columns to dividend_income.
     # Earlier versions stored dollar roc/cap_gains/income directly; the per-share
     # columns supersede them (RoC + Income = Total, distributed by Amount).
@@ -285,7 +294,7 @@ def load_state(profile_id):
         ).fetchall()
         value_history = [{"date": r["date"], "value": r["value"]} for r in history_rows]
 
-        accounts.append({
+        account = {
             "id":             a["id"],
             "name":           a["name"],
             "taxType":        a["tax_type"],
@@ -295,7 +304,10 @@ def load_state(profile_id):
             "holdings":       holdings,
             "transactions":   transactions,
             "valueHistory":   value_history,
-        })
+        }
+        if a["hidden"]:
+            account["hidden"] = True
+        accounts.append(account)
 
     # ── Categories + Subcategories ────────────────────────────────────────────
     cat_rows = con.execute(
@@ -430,8 +442,8 @@ def save_state(data, profile_id):
             for acc in accounts:
                 con.execute(
                     "INSERT INTO accounts "
-                    "(id, name, tax_type, account_type, opening_balance, created_at, profile_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "(id, name, tax_type, account_type, opening_balance, created_at, profile_id, hidden) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         acc["id"],
                         acc["name"],
@@ -440,6 +452,7 @@ def save_state(data, profile_id):
                         acc.get("openingBalance", 0),
                         acc["createdAt"],
                         profile_id,
+                        1 if acc.get("hidden") else 0,
                     )
                 )
                 for idx, h in enumerate(acc.get("holdings", [])):

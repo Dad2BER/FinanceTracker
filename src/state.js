@@ -142,6 +142,20 @@ export function deleteAccount(id) {
   notify();
 }
 
+// Toggles whether an account is hidden from the Portfolio page. Hidden accounts
+// keep all their data (holdings, transactions, history) and remain fully visible
+// everywhere else — used to retire closed accounts without losing their history.
+export function toggleAccountHidden(id) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) =>
+      a.id === id ? { ...a, hidden: !a.hidden } : a
+    ),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
 // ── Value History ─────────────────────────────────────────────────────────────
 
 /**

@@ -12,7 +12,7 @@ import { renderHoldingList } from "./components/holdings/holdingList.js";
 import { renderTransactionList } from "./components/ledger/transactionList.js";
 import { renderLedgersView } from "./components/ledger/ledgersView.js";
 import {
-  renderSettingsProfiles, renderSettingsApiKeys,
+  renderSettingsProfiles, renderSettingsAccounts, renderSettingsApiKeys,
   renderSettingsDatabase, renderSettingsCategories,
 } from "./components/settings/settingsView.js";
 import { renderReportsView }     from "./components/reports/reportsView.js";
@@ -58,6 +58,7 @@ const TAB_PAGES = {
   ],
   settings:   [
     { id: "settings-profiles",   label: "Profiles" },
+    { id: "settings-accounts",   label: "Accounts" },
     { id: "settings-api-keys",   label: "API Keys" },
     { id: "settings-database",   label: "Database" },
     { id: "settings-categories", label: "Categories & Payees" },
@@ -83,6 +84,7 @@ const PAGE_TO_SIDEBAR = {
   "ret-budget-est":   "ret-budget-est",
   "ret-historic":     "ret-historic",
   "settings-profiles":   "settings-profiles",
+  "settings-accounts":   "settings-accounts",
   "settings-api-keys":   "settings-api-keys",
   "settings-database":   "settings-database",
   "settings-categories": "settings-categories",
@@ -414,10 +416,11 @@ function render() {
   if (view.tab === "finances") {
     if (view.page === "summary") {
       const accounts = getAccounts();
+      const visibleAccounts = accounts.filter((a) => !a.hidden);
       const symbols = uniqueSymbols(accounts);
       renderAccountList(
         shellContent,
-        accounts,
+        visibleAccounts,
         prices,
         quoteDetails,
         pricesLoading,
@@ -430,7 +433,8 @@ function render() {
               : { tab: "finances", page: "account-detail", accountId }
           );
         },
-        () => loadPrices(symbols)
+        () => loadPrices(symbols),
+        accounts.some((a) => a.hidden)
       );
     } else if (view.page === "account-detail") {
       const account = getAccount(view.accountId);
@@ -507,7 +511,9 @@ function render() {
         () => navigateTo({ tab: "retirement", page: "ret-simulation" }));
     }
   } else if (view.tab === "settings") {
-    if (view.page === "settings-api-keys") {
+    if (view.page === "settings-accounts") {
+      renderSettingsAccounts(shellContent, getAccounts());
+    } else if (view.page === "settings-api-keys") {
       renderSettingsApiKeys(shellContent, (finnhubKey, avKey) => {
         if (finnhubKey !== undefined) {
           window.__FINNHUB_API_KEY__ = finnhubKey;

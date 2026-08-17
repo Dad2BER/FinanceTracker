@@ -298,7 +298,8 @@ export function renderAccountList(
   pricesLoading,
   pricesError,
   onSelectAccount,
-  onRefresh
+  onRefresh,
+  hasHiddenAccounts = false
 ) {
   container.innerHTML = "";
 
@@ -312,8 +313,12 @@ export function renderAccountList(
   if (accounts.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.innerHTML = `<p>No accounts yet.</p><button class="btn btn-primary">+ Add Your First Account</button>`;
-    empty.querySelector("button").addEventListener("click", () => showAccountForm());
+    empty.innerHTML = hasHiddenAccounts
+      ? `<p>All accounts are hidden.</p><p class="dim" style="font-size:0.85rem">Unhide them in Settings &rarr; Accounts.</p>`
+      : `<p>No accounts yet.</p><button class="btn btn-primary">+ Add Your First Account</button>`;
+    if (!hasHiddenAccounts) {
+      empty.querySelector("button").addEventListener("click", () => showAccountForm());
+    }
     container.appendChild(empty);
   } else {
     // ── Summary Cards ────────────────────────────────────────────────────────

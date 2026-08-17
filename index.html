@@ -252,6 +252,30 @@
     .settings-profile-actions { display: flex; gap: 0.15rem; flex-shrink: 0; }
     .settings-profile-add { padding-top: 0.5rem; }
 
+    /* ── Settings Accounts Section ───────────────────────────────────────── */
+    .settings-accounts-section {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.25rem 1.1rem;
+    }
+    .settings-account-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--color-border);
+      gap: 0.75rem;
+    }
+    .settings-account-row:last-child { border-bottom: none; }
+    .settings-account-row.hidden { opacity: 0.55; }
+    .settings-account-name { flex: 1; font-size: 0.9rem; }
+    .settings-account-type {
+      font-size: 0.78rem;
+      color: var(--color-text-dim);
+      flex-shrink: 0;
+    }
+
     /* ── Settings API Keys Section ───────────────────────────────────────── */
     .settings-api-section {
       background: var(--color-surface);
