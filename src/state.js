@@ -474,6 +474,22 @@ export function addDividendIncome(record) {
   return rec;
 }
 
+// Batch add for CSV import — one state update / save for the whole file instead
+// of one per row. `institution` (set by the importer, e.g. "etrade"/"schwab")
+// is kept separate from normalizeDivRecord so it's never touched by the manual
+// add/edit form, which has no institution field.
+export function addDividendIncomeBatch(records) {
+  const newRecs = records.map((r) => ({
+    id: generateId(),
+    ...normalizeDivRecord(r),
+    ...(r.institution ? { institution: r.institution } : {}),
+  }));
+  _data = { ..._data, dividendIncome: [...(_data.dividendIncome || []), ...newRecs] };
+  saveData(_data, _profileId);
+  notify();
+  return newRecs;
+}
+
 export function updateDividendIncome(id, record) {
   _data = {
     ..._data,

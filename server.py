@@ -113,7 +113,8 @@ def init_db():
             amount           REAL NOT NULL DEFAULT 0,
             per_share_total  REAL NOT NULL DEFAULT 0,
             per_share_roc    REAL NOT NULL DEFAULT 0,
-            per_share_income REAL NOT NULL DEFAULT 0
+            per_share_income REAL NOT NULL DEFAULT 0,
+            institution      TEXT
         );
         CREATE TABLE IF NOT EXISTS roc_rates (
             id         TEXT PRIMARY KEY,
@@ -204,6 +205,14 @@ def init_db():
             con.commit()
         except sqlite3.OperationalError:
             pass  # Column already exists
+
+    # Add institution to dividend_income (set by the CSV importer; used to
+    # detect already-imported rows alongside date/symbol/amount)
+    try:
+        con.execute("ALTER TABLE dividend_income ADD COLUMN institution TEXT")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
 
     # ── Data migrations ────────────────────────────────────────────────────────
     # Rename account_type 'liability' → 'ledger'
@@ -398,6 +407,7 @@ def load_state(profile_id):
             "perShareTotal":  d["per_share_total"],
             "perShareRoc":    d["per_share_roc"],
             "perShareIncome": d["per_share_income"],
+            "institution":    d["institution"] or "",
         })
 
     # ── Return of Capital Rates ───────────────────────────────────────────────
@@ -560,8 +570,8 @@ def save_state(data, profile_id):
             for d in dividend_income:
                 con.execute(
                     "INSERT INTO dividend_income "
-                    "(id, profile_id, account_id, date, description, symbol, amount, per_share_total, per_share_roc, per_share_income) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "(id, profile_id, account_id, date, description, symbol, amount, per_share_total, per_share_roc, per_share_income, institution) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         d["id"],
                         profile_id,
@@ -573,6 +583,7 @@ def save_state(data, profile_id):
                         d.get("perShareTotal", 0) or 0,
                         d.get("perShareRoc", 0) or 0,
                         d.get("perShareIncome", 0) or 0,
+                        d.get("institution") or None,
                     )
                 )
 

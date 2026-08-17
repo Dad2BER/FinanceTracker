@@ -96,6 +96,7 @@ addCategory / updateCategory / deleteCategory
 addPayee / updatePayee / deletePayee
 addTag / updateTag / deleteTag  // no-op on the protected "Cap. Ex." tag
 getDividendIncome() / addDividendIncome / updateDividendIncome / deleteDividendIncome
+addDividendIncomeBatch(records)  // used by the CSV importer — one save for the whole file
 getRocRates() / addRocRate(year, symbol, pct) / updateRocRate(id, symbol, pct) / deleteRocRate(id)
 recordAccountValue(accountId, date, value)
 updateHoldingDividend(accountId, holdingId, dividendPerShare)  // lightweight; used by startup fetch
@@ -222,11 +223,20 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
   date: ISO string,
   description: string,
   symbol: string,
-  amount: number,   // total dividend $ received
+  amount: number,      // total dividend $ received
+  institution: string, // optional — set only by the CSV importer, e.g. "etrade" | "schwab"
 }
 ```
 - The return-of-capital / income split is **not** stored on the record — it's derived at render time in `dividendIncomeView.js → computeDistribution(rec, rocRates)` by looking up a `RocRate` matching the record's year (`date.slice(0,4)`) and `symbol`. No match = 100% income.
 - Legacy records may still carry unused `perShareTotal`/`perShareRoc`/`perShareIncome` fields from before this lookup existed; the add/edit form no longer reads or writes them.
+- `institution` is deliberately excluded from `normalizeDivRecord` in `state.js` so editing a record via the manual form never clears it — only `addDividendIncomeBatch` (the importer) sets it.
+
+### Dividend Income Import (`dividendImport.js`)
+- "⇧ Import" on the Div. Income page opens a 2-step modal: (1) pick Financial Institution + Account + CSV file, (2) review/deselect parsed rows and import.
+- One parser per institution in an `INSTITUTIONS` map (currently `etrade`, `schwab`) — each institution's CSV layout is bespoke and hardcoded, not user-configurable column mapping like the ledger importer.
+- Only actual dividend / interest-income rows are kept: buys, sells, transfers, and reinvestment-purchase rows are filtered out per-institution (e.g. eTrade labels both a dividend and its reinvestment purchase as Activity Type "Dividend" — the purchase side is distinguished only by a negative Amount, so `amount > 0` is required).
+- A row is a duplicate (pre-unchecked, like the ledger importer) if an existing `DividendIncome` record matches on **institution + date + symbol + amount** — see `buildExistingKeys`/`dupKey` in `dividendImport.js`.
+- Shares `parseCSV` from `src/utils/csv.js` with the ledger transaction importer (`transactionImport.js`).
 
 ### RocRate (`Settings → Return of Capital`)
 ```js

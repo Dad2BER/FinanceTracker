@@ -2,6 +2,7 @@ import { getDividendIncome, deleteDividendIncome } from "../../state.js";
 import { formatCurrency } from "../../utils/currency.js";
 import { showConfirmDialog } from "../ui/confirmDialog.js";
 import { showDividendIncomeForm } from "./dividendIncomeForm.js";
+import { showDividendImportModal } from "./dividendImport.js";
 
 // Preserved across re-renders so collapse state survives mutations.
 // Holds the YEAR keys that are currently collapsed.
@@ -48,11 +49,15 @@ export function renderDividendIncome(container, accounts, rocRates) {
     <div class="detail-title-row">
       <h1>Dividend Income</h1>
       <div class="header-actions">
+        <button class="btn btn-ghost btn-sm" id="import-div-btn">&#8679; Import</button>
         <button class="btn btn-primary" id="add-div-btn">+ Add Income</button>
       </div>
     </div>
   `;
   container.appendChild(header);
+  header.querySelector("#import-div-btn").addEventListener("click", () =>
+    showDividendImportModal(accounts, records)
+  );
   header.querySelector("#add-div-btn").addEventListener("click", () =>
     showDividendIncomeForm(accounts, null)
   );
