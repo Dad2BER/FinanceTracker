@@ -1,4 +1,4 @@
-import { getAccounts, getAccount, getCategories, getPayees, getTags, subscribe, initState, recordAccountValues, updateHoldingDividend } from "./state.js";
+import { getAccounts, getAccount, getCategories, getPayees, getTags, getRocRates, subscribe, initState, recordAccountValues, updateHoldingDividend } from "./state.js";
 import { fetchQuotes } from "./services/prices.js";
 import { fetchDividendMetric } from "./services/finnhub.js";
 import {
@@ -14,6 +14,7 @@ import { renderLedgersView } from "./components/ledger/ledgersView.js";
 import {
   renderSettingsProfiles, renderSettingsAccounts, renderSettingsApiKeys,
   renderSettingsDatabase, renderSettingsCategories, renderSettingsTags,
+  renderSettingsRocRates,
 } from "./components/settings/settingsView.js";
 import { renderReportsView }     from "./components/reports/reportsView.js";
 import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
@@ -63,6 +64,7 @@ const TAB_PAGES = {
     { id: "settings-database",   label: "Database" },
     { id: "settings-categories", label: "Categories & Payees" },
     { id: "settings-tags",       label: "Tags" },
+    { id: "settings-roc",        label: "Return of Capital" },
   ],
 };
 
@@ -90,6 +92,7 @@ const PAGE_TO_SIDEBAR = {
   "settings-database":   "settings-database",
   "settings-categories": "settings-categories",
   "settings-tags":       "settings-tags",
+  "settings-roc":        "settings-roc",
 };
 
 // ── View State ────────────────────────────────────────────────────────────────
@@ -469,7 +472,7 @@ function render() {
     } else if (view.page === "ledgers") {
       renderLedgersView(shellContent, getAccounts(), getCategories());
     } else if (view.page === "div-income") {
-      renderDividendIncome(shellContent, getAccounts());
+      renderDividendIncome(shellContent, getAccounts(), getRocRates());
     } else if (view.page === "ledger-detail") {
       const account = getAccount(view.accountId);
       if (!account) {
@@ -537,6 +540,8 @@ function render() {
       renderSettingsCategories(shellContent, getCategories(), getPayees());
     } else if (view.page === "settings-tags") {
       renderSettingsTags(shellContent, getTags());
+    } else if (view.page === "settings-roc") {
+      renderSettingsRocRates(shellContent, getRocRates());
     } else {
       renderSettingsProfiles(shellContent, {
         profiles,

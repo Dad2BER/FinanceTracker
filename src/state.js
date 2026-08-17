@@ -16,6 +16,7 @@ export function initState(data, profileId) {
     payees:            Array.isArray(data?.payees)     ? data.payees     : [],
     tags:              Array.isArray(data?.tags)       ? data.tags       : [],
     dividendIncome:    Array.isArray(data?.dividendIncome) ? data.dividendIncome : [],
+    rocRates:          Array.isArray(data?.rocRates)    ? data.rocRates   : [],
     retirementInputs:  data?.retirementInputs  ?? null,
     budgetEstInputs:   data?.budgetEstInputs   ?? null,
   };
@@ -455,16 +456,13 @@ export function getDividendIncome() {
   return _data.dividendIncome || [];
 }
 
-function normalizeDivRecord({ accountId, date, description, symbol, amount, perShareTotal, perShareRoc, perShareIncome }) {
+function normalizeDivRecord({ accountId, date, description, symbol, amount }) {
   return {
-    accountId:      accountId || null,
+    accountId:   accountId || null,
     date,
-    description:    (description || "").trim(),
-    symbol:         (symbol || "").trim().toUpperCase(),
-    amount:         parseFloat(amount) || 0,
-    perShareTotal:  parseFloat(perShareTotal) || 0,
-    perShareRoc:    parseFloat(perShareRoc) || 0,
-    perShareIncome: parseFloat(perShareIncome) || 0,
+    description: (description || "").trim(),
+    symbol:      (symbol || "").trim().toUpperCase(),
+    amount:      parseFloat(amount) || 0,
   };
 }
 
@@ -491,6 +489,48 @@ export function deleteDividendIncome(id) {
   _data = {
     ..._data,
     dividendIncome: (_data.dividendIncome || []).filter((r) => r.id !== id),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
+// ── Return of Capital Rates ─────────────────────────────────────────────────
+// One rate per (year, symbol): the % of that symbol's dividend to treat as
+// return of capital in that year. Looked up by Div. Income at render time
+// instead of being entered per-transaction.
+
+export function getRocRates() {
+  return _data.rocRates || [];
+}
+
+export function addRocRate(year, symbol, pct) {
+  const rate = {
+    id:     generateId(),
+    year:   String(year).trim(),
+    symbol: symbol.trim().toUpperCase(),
+    pct:    parseFloat(pct) || 0,
+  };
+  _data = { ..._data, rocRates: [...(_data.rocRates || []), rate] };
+  saveData(_data, _profileId);
+  notify();
+  return rate;
+}
+
+export function updateRocRate(id, symbol, pct) {
+  _data = {
+    ..._data,
+    rocRates: (_data.rocRates || []).map((r) =>
+      r.id === id ? { ...r, symbol: symbol.trim().toUpperCase(), pct: parseFloat(pct) || 0 } : r
+    ),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
+export function deleteRocRate(id) {
+  _data = {
+    ..._data,
+    rocRates: (_data.rocRates || []).filter((r) => r.id !== id),
   };
   saveData(_data, _profileId);
   notify();

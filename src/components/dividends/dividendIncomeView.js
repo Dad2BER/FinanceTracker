@@ -19,22 +19,23 @@ function fmt(n) {
   return n ? formatCurrency(n) : "—";
 }
 
-// Distributes the transaction Amount into RoC / Income dollar figures using the
-// per-share distribution. shares = amount / perShareTotal; each component is
-// shares × its per-share value. Returns zeros when no per-share total is set.
-export function computeDistribution(rec) {
-  const total = rec.perShareTotal || 0;
-  if (total <= 0) return { roc: 0, income: 0 };
-  const shares = (rec.amount || 0) / total;
-  return {
-    roc:    shares * (rec.perShareRoc || 0),
-    income: shares * (rec.perShareIncome || 0),
-  };
+// Distributes a record's Amount into RoC / Income dollar figures by looking up
+// the return-of-capital % configured for the record's (year, symbol) in
+// Settings > Return of Capital. Falls back to all-income when no rate is
+// configured for that year/symbol combination.
+export function computeDistribution(rec, rocRates) {
+  const year   = (rec.date || "").slice(0, 4);
+  const symbol = (rec.symbol || "").trim().toUpperCase();
+  const amount = rec.amount || 0;
+  const rate = (rocRates || []).find((r) => r.year === year && r.symbol === symbol);
+  if (!rate || !rate.pct) return { roc: 0, income: amount };
+  const roc = amount * (rate.pct / 100);
+  return { roc, income: amount - roc };
 }
 
 // Entry point — receives accounts from app.js so it can resolve account
 // names and populate the add/edit form.
-export function renderDividendIncome(container, accounts) {
+export function renderDividendIncome(container, accounts, rocRates) {
   container.innerHTML = "";
 
   const records = getDividendIncome();
@@ -105,7 +106,7 @@ export function renderDividendIncome(container, accounts) {
 
     const totals = rows.reduce(
       (t, r) => {
-        const dist = computeDistribution(r);
+        const dist = computeDistribution(r, rocRates);
         t.amount += r.amount || 0;
         t.roc    += dist.roc;
         t.income += dist.income;
@@ -139,7 +140,7 @@ export function renderDividendIncome(container, accounts) {
     if (collapsed) rowsBody.style.display = "none";
 
     rows.forEach((r) => {
-      const dist = computeDistribution(r);
+      const dist = computeDistribution(r, rocRates);
       const tr = document.createElement("tr");
       tr.className = "div-income-row";
       tr.innerHTML = `

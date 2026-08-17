@@ -306,6 +306,27 @@
     }
     .settings-tag-add { padding-top: 0.5rem; }
 
+    /* ── Settings Return of Capital Section ──────────────────────────────── */
+    .settings-roc-section {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.25rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    .settings-roc-row {
+      display: flex;
+      align-items: center;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--color-border);
+      gap: 0.75rem;
+    }
+    .settings-roc-row:last-child { border-bottom: none; }
+    .settings-roc-symbol { flex: 1; font-size: 0.9rem; font-weight: 600; }
+    .settings-roc-pct { font-size: 0.9rem; color: var(--color-text-dim); flex-shrink: 0; }
+    .settings-roc-actions { display: flex; align-items: center; gap: 0.15rem; flex-shrink: 0; }
+    .settings-roc-add { padding-top: 0.5rem; }
+
     /* ── Settings API Keys Section ───────────────────────────────────────── */
     .settings-api-section {
       background: var(--color-surface);
@@ -2258,13 +2279,6 @@
     /* Dividend form: multi-column rows + distribution breakdown */
     .form-row { display: flex; gap: 1rem; }
     .form-row > .form-group { flex: 1; }
-    .form-row-3 { gap: 0.6rem; }
-    .dividend-sub-label {
-      font-size: 0.78rem !important;
-      color: var(--color-text-dim) !important;
-    }
-    .dividend-breakdown-label { display: block; }
-    .field-hint-warn { color: var(--color-danger); }
 
   </style>
 </head>

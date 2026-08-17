@@ -115,6 +115,13 @@ def init_db():
             per_share_roc    REAL NOT NULL DEFAULT 0,
             per_share_income REAL NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS roc_rates (
+            id         TEXT PRIMARY KEY,
+            profile_id TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+            year       TEXT NOT NULL,
+            symbol     TEXT NOT NULL,
+            pct        REAL NOT NULL DEFAULT 0
+        );
     """)
     con.commit()
 
@@ -393,6 +400,16 @@ def load_state(profile_id):
             "perShareIncome": d["per_share_income"],
         })
 
+    # ── Return of Capital Rates ───────────────────────────────────────────────
+    roc_rows = con.execute(
+        "SELECT * FROM roc_rates WHERE profile_id = ? ORDER BY year DESC, symbol",
+        (profile_id,)
+    ).fetchall()
+    roc_rates = [
+        {"id": r["id"], "year": r["year"], "symbol": r["symbol"], "pct": r["pct"]}
+        for r in roc_rows
+    ]
+
     # ── Profile Settings (retirement inputs, etc.) ────────────────────────────
     settings_row = con.execute(
         "SELECT settings_json FROM profile_settings WHERE profile_id = ?",
@@ -412,6 +429,7 @@ def load_state(profile_id):
         "payees":           payees,
         "tags":             tags,
         "dividendIncome":   dividend_income,
+        "rocRates":         roc_rates,
         "retirementInputs": ret_inputs,
     }
 
@@ -422,6 +440,7 @@ def save_state(data, profile_id):
     payees          = data.get("payees",          [])
     tags            = data.get("tags",            [])
     dividend_income = data.get("dividendIncome",  [])
+    roc_rates       = data.get("rocRates",        [])
 
     con = sqlite3.connect(DB_PATH)
     con.execute("PRAGMA foreign_keys=ON")
@@ -450,6 +469,7 @@ def save_state(data, profile_id):
 
             con.execute("DELETE FROM categories      WHERE profile_id = ?", (profile_id,))
             con.execute("DELETE FROM dividend_income WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM roc_rates       WHERE profile_id = ?", (profile_id,))
             con.execute("DELETE FROM accounts        WHERE profile_id = ?", (profile_id,))
 
             # ── Categories + Subcategories ─────────────────────────────────────
@@ -554,6 +574,13 @@ def save_state(data, profile_id):
                         d.get("perShareRoc", 0) or 0,
                         d.get("perShareIncome", 0) or 0,
                     )
+                )
+
+            # ── Return of Capital Rates ─────────────────────────────────────────
+            for r in roc_rates:
+                con.execute(
+                    "INSERT INTO roc_rates (id, profile_id, year, symbol, pct) VALUES (?, ?, ?, ?, ?)",
+                    (r["id"], profile_id, r["year"], r["symbol"], r.get("pct", 0) or 0)
                 )
 
             # ── Profile Settings ────────────────────────────────────────────────

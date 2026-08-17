@@ -6,12 +6,14 @@ import {
   addSubcategory, updateSubcategory, deleteSubcategory,
   addPayee, updatePayee, deletePayee,
   addTag, updateTag, deleteTag,
-  getCategories, getPayees, toggleAccountHidden,
+  addRocRate, updateRocRate, deleteRocRate,
+  getCategories, getPayees, getRocRates, toggleAccountHidden,
 } from "../../state.js";
 
 // ── Module-level selection state (persists across re-renders) ─────────────────
 let _selectedCategoryId = null;
 let _selectedSubcategoryId = null;
+let _selectedRocYear = null;
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -136,6 +138,87 @@ function showPayeeEditPrompt({ initialName = "", initialSubcategoryId = null, ca
 
   Modal.open(el);
   setTimeout(() => el.querySelector("#pe-name").focus(), 50);
+}
+
+function showYearPrompt({ title, initialValue = "", onSave }) {
+  const el = document.createElement("div");
+  el.innerHTML = `
+    <h3>${escHtml(title)}</h3>
+    <div class="form-group">
+      <label for="yp-year">Year</label>
+      <input id="yp-year" type="number" class="form-input" placeholder="e.g. 2026" value="${escHtml(initialValue)}" min="1900" max="2999" step="1">
+      <span class="field-error" id="yp-err"></span>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" id="yp-cancel">Cancel</button>
+      <button class="btn btn-primary" id="yp-save">Save</button>
+    </div>
+  `;
+  const input = el.querySelector("#yp-year");
+  el.querySelector("#yp-cancel").addEventListener("click", () => Modal.close());
+  el.querySelector("#yp-save").addEventListener("click", () => {
+    const val = input.value.trim();
+    if (!/^\d{4}$/.test(val)) {
+      el.querySelector("#yp-err").textContent = "Enter a 4-digit year.";
+      return;
+    }
+    Modal.close();
+    onSave(val);
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") el.querySelector("#yp-save").click(); });
+  Modal.open(el);
+  setTimeout(() => input.focus(), 50);
+}
+
+function showRocRateEditPrompt({ title, initialSymbol = "", initialPct = "", onSave }) {
+  const el = document.createElement("div");
+  el.innerHTML = `
+    <h3>${escHtml(title)}</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="rr-symbol">Symbol</label>
+        <input id="rr-symbol" type="text" class="form-input" placeholder="e.g. SCHD"
+          autocomplete="off" spellcheck="false" value="${escHtml(initialSymbol)}">
+        <span class="field-error" id="rr-symbol-err"></span>
+      </div>
+      <div class="form-group">
+        <label for="rr-pct">Return of Capital %</label>
+        <input id="rr-pct" type="number" step="0.01" min="0" max="100" class="form-input"
+          placeholder="e.g. 15.5" value="${initialPct === "" ? "" : initialPct}">
+        <span class="field-error" id="rr-pct-err"></span>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" id="rr-cancel">Cancel</button>
+      <button class="btn btn-primary" id="rr-save">Save</button>
+    </div>
+  `;
+  const symbolInput = el.querySelector("#rr-symbol");
+  const pctInput = el.querySelector("#rr-pct");
+  el.querySelector("#rr-cancel").addEventListener("click", () => Modal.close());
+  el.querySelector("#rr-save").addEventListener("click", () => {
+    const symbol = symbolInput.value.trim();
+    const pctRaw = pctInput.value.trim();
+    const pct = parseFloat(pctRaw);
+
+    let valid = true;
+    el.querySelector("#rr-symbol-err").textContent = "";
+    el.querySelector("#rr-pct-err").textContent = "";
+    if (!symbol) {
+      el.querySelector("#rr-symbol-err").textContent = "Symbol is required.";
+      valid = false;
+    }
+    if (pctRaw === "" || isNaN(pct) || pct < 0 || pct > 100) {
+      el.querySelector("#rr-pct-err").textContent = "Enter a percent between 0 and 100.";
+      valid = false;
+    }
+    if (!valid) return;
+
+    Modal.close();
+    onSave(symbol, pct);
+  });
+  Modal.open(el);
+  setTimeout(() => symbolInput.focus(), 50);
 }
 
 // ── Profiles ─────────────────────────────────────────────────────────────────
@@ -798,4 +881,175 @@ export function renderSettingsTags(container, tags) {
   });
   addRow.appendChild(addBtn);
   container.appendChild(addRow);
+}
+
+// ── Return of Capital ──────────────────────────────────────────────────────
+
+export function renderSettingsRocRates(container, rocRates) {
+  // Years that actually have at least one saved rate, newest first.
+  const years = [...new Set(rocRates.map((r) => r.year))].sort((a, b) => b.localeCompare(a));
+
+  // _selectedRocYear may be a brand-new year the user just added (or an
+  // emptied-out year whose last symbol was just deleted) that has no rates
+  // yet — keep it selected until a rate is saved under it or the user picks
+  // something else. Only default to the first real year on first render.
+  if (_selectedRocYear === null) {
+    _selectedRocYear = years[0] ?? null;
+  }
+
+  function rerender() {
+    renderSettingsRocRates(container, getRocRates());
+  }
+
+  container.innerHTML = "";
+  renderPageHeader(container, "Return of Capital");
+
+  // ── Year Toolbar ─────────────────────────────────────────────────────────
+  const toolbar = document.createElement("div");
+  toolbar.className = "settings-toolbar";
+
+  const selectableYears = _selectedRocYear && !years.includes(_selectedRocYear)
+    ? [_selectedRocYear, ...years]
+    : years;
+
+  const yearOptions = selectableYears
+    .map((y) => `<option value="${escHtml(y)}" ${y === _selectedRocYear ? "selected" : ""}>${escHtml(y)}</option>`)
+    .join("");
+
+  toolbar.innerHTML = `
+    <select class="form-select settings-cat-select" id="roc-year-select" ${selectableYears.length === 0 ? "disabled" : ""}>
+      ${selectableYears.length === 0 ? '<option value="">No years</option>' : yearOptions}
+    </select>
+    <button class="btn btn-primary btn-sm" id="add-year-btn">+ Add Year</button>
+    <button class="btn btn-secondary btn-sm" id="delete-year-btn" ${!_selectedRocYear ? "disabled" : ""} style="color:var(--color-danger)">&#128465; Delete Year</button>
+  `;
+  container.appendChild(toolbar);
+
+  toolbar.querySelector("#roc-year-select").addEventListener("change", (e) => {
+    _selectedRocYear = e.target.value;
+    rerender();
+  });
+
+  toolbar.querySelector("#add-year-btn").addEventListener("click", () => {
+    showYearPrompt({
+      title: "Add Year",
+      onSave: (year) => {
+        _selectedRocYear = year;
+        rerender();
+      },
+    });
+  });
+
+  if (_selectedRocYear) {
+    toolbar.querySelector("#delete-year-btn").addEventListener("click", () => {
+      const yearRates = rocRates.filter((r) => r.year === _selectedRocYear);
+      showConfirmDialog({
+        title: "Delete Year",
+        message: yearRates.length > 0
+          ? `Delete all ${yearRates.length} Return of Capital rate(s) for ${_selectedRocYear}?`
+          : `Remove ${_selectedRocYear} from the list?`,
+        onConfirm: () => {
+          yearRates.forEach((r) => deleteRocRate(r.id));
+          _selectedRocYear = null;
+          rerender();
+        },
+      });
+    });
+  }
+
+  // ── Empty state (no years yet) ──────────────────────────────────────────
+  if (!_selectedRocYear) {
+    const empty = document.createElement("p");
+    empty.className = "dim";
+    empty.style.cssText = "font-size:0.88rem;padding:1rem 0;";
+    empty.textContent = "No years configured yet. Add one above to get started.";
+    container.appendChild(empty);
+    return;
+  }
+
+  // ── Symbol / % list for the selected year ───────────────────────────────
+  const yearRates = rocRates
+    .filter((r) => r.year === _selectedRocYear)
+    .sort((a, b) => a.symbol.localeCompare(b.symbol));
+
+  const section = document.createElement("div");
+  section.className = "settings-roc-section";
+
+  if (yearRates.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "dim";
+    empty.style.cssText = "font-size:0.88rem;padding:0.5rem 0;";
+    empty.textContent = `No symbols configured for ${_selectedRocYear} yet. Add one below.`;
+    section.appendChild(empty);
+  } else {
+    const list = document.createElement("div");
+    list.className = "settings-roc-list";
+
+    yearRates.forEach((rate) => {
+      const row = document.createElement("div");
+      row.className = "settings-roc-row";
+
+      const symbolSpan = document.createElement("span");
+      symbolSpan.className = "settings-roc-symbol";
+      symbolSpan.textContent = rate.symbol;
+
+      const pctSpan = document.createElement("span");
+      pctSpan.className = "settings-roc-pct";
+      pctSpan.textContent = `${rate.pct}%`;
+
+      const actions = document.createElement("span");
+      actions.className = "settings-roc-actions";
+
+      const editBtn = document.createElement("button");
+      editBtn.className = "icon-btn";
+      editBtn.title = "Edit";
+      editBtn.textContent = "✏";
+      editBtn.addEventListener("click", () => {
+        showRocRateEditPrompt({
+          title: "Edit Symbol",
+          initialSymbol: rate.symbol,
+          initialPct: rate.pct,
+          onSave: (symbol, pct) => updateRocRate(rate.id, symbol, pct),
+        });
+      });
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "icon-btn icon-btn-danger";
+      delBtn.title = "Delete";
+      delBtn.textContent = "🗑";
+      delBtn.addEventListener("click", () => {
+        showConfirmDialog({
+          title: "Delete Symbol",
+          message: `Delete the ${rate.symbol} Return of Capital rate for ${_selectedRocYear}?`,
+          onConfirm: () => deleteRocRate(rate.id),
+        });
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+      row.appendChild(symbolSpan);
+      row.appendChild(pctSpan);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+
+    section.appendChild(list);
+  }
+
+  container.appendChild(section);
+
+  // ── Add symbol row ───────────────────────────────────────────────────────
+  const addRocRow = document.createElement("div");
+  addRocRow.className = "settings-roc-add";
+  const addRocBtn = document.createElement("button");
+  addRocBtn.className = "btn btn-secondary btn-sm";
+  addRocBtn.textContent = "+ Add Symbol";
+  addRocBtn.addEventListener("click", () => {
+    showRocRateEditPrompt({
+      title: `Add Symbol — ${_selectedRocYear}`,
+      onSave: (symbol, pct) => addRocRate(_selectedRocYear, symbol, pct),
+    });
+  });
+  addRocRow.appendChild(addRocBtn);
+  container.appendChild(addRocRow);
 }

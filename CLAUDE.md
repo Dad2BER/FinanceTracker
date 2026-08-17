@@ -71,7 +71,8 @@ settings
   ├── settings-api-keys    (API Keys)
   ├── settings-database    (Database backup/restore)
   ├── settings-categories  (Categories & Payees)
-  └── settings-tags        (Tags)
+  ├── settings-tags        (Tags)
+  └── settings-roc         (Return of Capital)
 ```
 
 **Adding a new tab page:** update `TAB_PAGES`, `PAGE_TO_SIDEBAR`, the `render()` dispatch in `app.js`, and add any needed CSS to `index.html`.
@@ -94,6 +95,8 @@ addTransaction / updateTransaction / deleteTransaction
 addCategory / updateCategory / deleteCategory
 addPayee / updatePayee / deletePayee
 addTag / updateTag / deleteTag  // no-op on the protected "Cap. Ex." tag
+getDividendIncome() / addDividendIncome / updateDividendIncome / deleteDividendIncome
+getRocRates() / addRocRate(year, symbol, pct) / updateRocRate(id, symbol, pct) / deleteRocRate(id)
 recordAccountValue(accountId, date, value)
 updateHoldingDividend(accountId, holdingId, dividendPerShare)  // lightweight; used by startup fetch
 updateDividendBySymbol(symbol, dividendPerShare, dividendReinvested)  // updates all holdings of a symbol
@@ -210,6 +213,32 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
 ```
 - Tags are a managed pick-list (Settings → Tags), but a transaction's `tag` is still stored as a plain string, not a tag id — deleting a tag does not touch transactions that already used its name.
 - Every profile is seeded with one non-deletable, non-renamable tag: **"Cap. Ex."** (`protected: true`), both on profile creation and via a one-time migration for existing profiles in `server.py`.
+
+### DividendIncome
+```js
+{
+  id: string,
+  accountId: string,
+  date: ISO string,
+  description: string,
+  symbol: string,
+  amount: number,   // total dividend $ received
+}
+```
+- The return-of-capital / income split is **not** stored on the record — it's derived at render time in `dividendIncomeView.js → computeDistribution(rec, rocRates)` by looking up a `RocRate` matching the record's year (`date.slice(0,4)`) and `symbol`. No match = 100% income.
+- Legacy records may still carry unused `perShareTotal`/`perShareRoc`/`perShareIncome` fields from before this lookup existed; the add/edit form no longer reads or writes them.
+
+### RocRate (`Settings → Return of Capital`)
+```js
+{
+  id: string,
+  year: string,    // 4-digit year, e.g. "2026"
+  symbol: string,
+  pct: number,     // 0–100, % of that symbol's dividend to treat as return of capital that year
+}
+```
+- Managed per (year, symbol) in Settings → Return of Capital; not tied to individual dividend-income transactions.
+- `state.js` exports `getRocRates() / addRocRate(year, symbol, pct) / updateRocRate(id, symbol, pct) / deleteRocRate(id)`.
 
 ### Retirement Inputs (`_s` in `retirementView.js`)
 ```js
