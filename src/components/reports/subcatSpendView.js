@@ -38,7 +38,7 @@ function subtractMonths(year, month, n) {
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export function renderSubcatSpendView(container, accounts, categories, onBack, payees = []) {
+export function renderSubcatSpendView(container, accounts, categories, onBack, payees = [], tags = []) {
   container.innerHTML = "";
 
   function rerender() {
@@ -519,7 +519,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
       <th></th><th></th>
       <th><input type="text" class="filter-input" placeholder="Filter…" id="subcat-tx-filter-payee"></th>
       <th></th><th></th>
-      <th><input type="text" class="filter-input" placeholder="Filter…" id="subcat-tx-filter-tag"></th>
+      <th><select class="filter-select" id="subcat-tx-filter-tag"></select></th>
       <th></th>
     </tr>
   </thead>`;
@@ -599,6 +599,20 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   const payeeFilterInput = table.querySelector("#subcat-tx-filter-payee");
   const tagFilterInput   = table.querySelector("#subcat-tx-filter-tag");
 
+  // Build the tag dropdown from the managed tag list, "All" first.
+  const tagOption = document.createElement("option");
+  tagOption.value = "";
+  tagOption.textContent = "All";
+  tagFilterInput.appendChild(tagOption);
+  [...tags]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((tag) => {
+      const o = document.createElement("option");
+      o.value = tag.name;
+      o.textContent = tag.name;
+      tagFilterInput.appendChild(o);
+    });
+
   function applyTxFilters() {
     const payeeVal = payeeFilterInput.value.trim().toLowerCase();
     const tagVal   = tagFilterInput.value.trim().toLowerCase();
@@ -609,7 +623,7 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
       rows.forEach((row, i) => {
         const visible =
           (!payeeVal || row.payee.toLowerCase().includes(payeeVal)) &&
-          (!tagVal || row.tag.toLowerCase().includes(tagVal));
+          (!tagVal || row.tag.toLowerCase() === tagVal);
         trs[i].style.display = visible ? "" : "none";
         if (visible) { anyVisible = true; visibleTotal += row.amount; }
       });
@@ -619,6 +633,6 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
   }
 
   payeeFilterInput.addEventListener("input", applyTxFilters);
-  tagFilterInput.addEventListener("input", applyTxFilters);
+  tagFilterInput.addEventListener("change", applyTxFilters);
   container.appendChild(tableSection);
 }

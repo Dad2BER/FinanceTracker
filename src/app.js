@@ -490,7 +490,7 @@ function render() {
     const _reportCategories = getCategories();
     const _reportOnBack     = () => navigateTo({ tab: "finances", page: "summary" });
     if (view.page === "subcat-spend") {
-      renderSubcatSpendView(shellContent, _reportAccounts, _reportCategories, _reportOnBack, getPayees());
+      renderSubcatSpendView(shellContent, _reportAccounts, _reportCategories, _reportOnBack, getPayees(), getTags());
     } else if (view.page === "tag-spend") {
       renderTagSpendView(shellContent, _reportAccounts, _reportCategories);
     } else if (view.page === "ret-budget-est") {
