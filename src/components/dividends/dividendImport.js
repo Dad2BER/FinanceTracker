@@ -2,6 +2,7 @@ import { Modal } from "../ui/modal.js";
 import { addDividendIncomeBatch } from "../../state.js";
 import { parseCSV } from "../../utils/csv.js";
 import { formatCurrency } from "../../utils/currency.js";
+import { INSTITUTIONS as INSTITUTION_LABELS } from "../../constants/institutions.js";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -118,8 +119,8 @@ function parseEtradeCsv(rawRows) {
 }
 
 const INSTITUTIONS = {
-  etrade: { label: "E*TRADE", parse: parseEtradeCsv },
-  schwab: { label: "Charles Schwab", parse: parseSchwabCsv },
+  etrade: { label: INSTITUTION_LABELS.etrade.label, parse: parseEtradeCsv },
+  schwab: { label: INSTITUTION_LABELS.schwab.label, parse: parseSchwabCsv },
 };
 
 // ── Duplicate Detection ────────────────────────────────────────────────────────
@@ -159,14 +160,27 @@ export function showDividendImportModal(accounts, existingRecords = []) {
     fn();
   }
 
+  // Narrows the account list to those tagged with the selected institution
+  // (Settings > Accounts). Falls back to the full list when nothing is
+  // tagged yet, so an untagged account is never made unreachable.
+  function accountsForInstitution(institutionKey) {
+    if (!institutionKey) return accounts;
+    const tagged = accounts.filter((a) => a.institution === institutionKey);
+    return tagged.length > 0 ? tagged : accounts;
+  }
+
+  function buildAccountOptions(list, selectedId) {
+    return list
+      .map((a) => `<option value="${escHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escHtml(a.name)}</option>`)
+      .join("");
+  }
+
   // ── Step 1: Institution + Account + File ────────────────────────────────
   function step1() {
     const institutionOptions = Object.entries(INSTITUTIONS)
       .map(([key, cfg]) => `<option value="${key}" ${key === _institutionKey ? "selected" : ""}>${escHtml(cfg.label)}</option>`)
       .join("");
-    const accountOptions = accounts
-      .map((a) => `<option value="${escHtml(a.id)}" ${a.id === _accountId ? "selected" : ""}>${escHtml(a.name)}</option>`)
-      .join("");
+    const accountOptions = buildAccountOptions(accountsForInstitution(_institutionKey), _accountId);
 
     el.innerHTML = `
       <h3>Import Dividend Income — Step 1 of 2</h3>
@@ -203,6 +217,15 @@ export function showDividendImportModal(accounts, existingRecords = []) {
     `;
 
     el.querySelector("#div-imp-cancel").addEventListener("click", () => Modal.close());
+
+    // Narrow the account list as soon as an institution is picked, keeping
+    // the current account selected if it's still in the narrowed list.
+    el.querySelector("#div-imp-institution").addEventListener("change", (e) => {
+      const accountSel = el.querySelector("#div-imp-account");
+      const prevAccountId = accountSel.value;
+      const list = accountsForInstitution(e.target.value);
+      accountSel.innerHTML = `<option value="">— Select account —</option>${buildAccountOptions(list, prevAccountId)}`;
+    });
 
     el.querySelector("#div-imp-next").addEventListener("click", () => {
       const institutionKey = el.querySelector("#div-imp-institution").value;

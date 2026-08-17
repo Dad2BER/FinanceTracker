@@ -90,6 +90,7 @@ subscribe(fn)                   // returns unsubscribe fn
 getAccounts() / getAccount(id)
 addAccount / updateAccount / deleteAccount
 toggleAccountHidden(id)         // hides/shows an account on the Portfolio page only; data untouched elsewhere
+setAccountInstitution(id, institution)  // tags an account with a financial institution (Settings > Accounts)
 addHolding / updateHolding / deleteHolding
 addTransaction / updateTransaction / deleteTransaction
 addCategory / updateCategory / deleteCategory
@@ -169,6 +170,7 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
   transactions: Transaction[],  // ledger accounts
   valueHistory: { date, value }[],
   hidden: boolean,              // optional — excludes from Portfolio page only; data stays intact everywhere else
+  institution: string,          // optional — e.g. "etrade" | "schwab", set in Settings > Accounts; narrows the account dropdown on the Div. Income importer
 }
 ```
 
@@ -233,7 +235,8 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
 
 ### Dividend Income Import (`dividendImport.js`)
 - "⇧ Import" on the Div. Income page opens a 2-step modal: (1) pick Financial Institution + Account + CSV file, (2) review/deselect parsed rows and import.
-- One parser per institution in an `INSTITUTIONS` map (currently `etrade`, `schwab`) — each institution's CSV layout is bespoke and hardcoded, not user-configurable column mapping like the ledger importer.
+- One parser per institution in an `INSTITUTIONS` map (currently `etrade`, `schwab`) — each institution's CSV layout is bespoke and hardcoded, not user-configurable column mapping like the ledger importer. Institution ids/labels come from `src/constants/institutions.js`, shared with Settings > Accounts so the two stay in sync.
+- Picking a Financial Institution narrows the Account dropdown to accounts tagged with that institution (`account.institution`, set in Settings > Accounts); falls back to the full account list if none are tagged, so an untagged account is never unreachable.
 - Only actual dividend / interest-income rows are kept: buys, sells, transfers, and reinvestment-purchase rows are filtered out per-institution (e.g. eTrade labels both a dividend and its reinvestment purchase as Activity Type "Dividend" — the purchase side is distinguished only by a negative Amount, so `amount > 0` is required).
 - A row is a duplicate (pre-unchecked, like the ledger importer) if an existing `DividendIncome` record matches on **account + date + symbol + amount** — see `buildExistingKeys`/`dupKey` in `dividendImport.js`. Deliberately *not* keyed on `institution`: manual entries (and anything imported before this feature existed) have no `institution` value, so requiring it meant those rows could never be recognized as duplicates of a later import — this caused real duplicate rows in production before being caught and fixed.
 - Shares `parseCSV` from `src/utils/csv.js` with the ledger transaction importer (`transactionImport.js`).

@@ -7,8 +7,9 @@ import {
   addPayee, updatePayee, deletePayee,
   addTag, updateTag, deleteTag,
   addRocRate, updateRocRate, deleteRocRate,
-  getCategories, getPayees, getRocRates, toggleAccountHidden,
+  getCategories, getPayees, getRocRates, toggleAccountHidden, setAccountInstitution,
 } from "../../state.js";
+import { INSTITUTIONS } from "../../constants/institutions.js";
 
 // ── Module-level selection state (persists across re-renders) ─────────────────
 let _selectedCategoryId = null;
@@ -367,6 +368,14 @@ export function renderSettingsAccounts(container, accounts) {
       typeSpan.className = "settings-account-type";
       typeSpan.textContent = formatAccountType(account);
 
+      const institutionOptions = Object.entries(INSTITUTIONS)
+        .map(([key, cfg]) => `<option value="${key}" ${account.institution === key ? "selected" : ""}>${escHtml(cfg.label)}</option>`)
+        .join("");
+      const institutionSel = document.createElement("select");
+      institutionSel.className = "form-select settings-account-institution";
+      institutionSel.innerHTML = `<option value="" ${!account.institution ? "selected" : ""}>— None —</option>${institutionOptions}`;
+      institutionSel.addEventListener("change", () => setAccountInstitution(account.id, institutionSel.value));
+
       const toggleBtn = document.createElement("button");
       toggleBtn.className = "btn btn-secondary btn-sm";
       toggleBtn.textContent = account.hidden ? "Show" : "Hide";
@@ -377,6 +386,7 @@ export function renderSettingsAccounts(container, accounts) {
 
       row.appendChild(nameSpan);
       row.appendChild(typeSpan);
+      row.appendChild(institutionSel);
       row.appendChild(toggleBtn);
       list.appendChild(row);
     });
@@ -387,7 +397,7 @@ export function renderSettingsAccounts(container, accounts) {
   const hint = document.createElement("p");
   hint.className = "dim";
   hint.style.cssText = "font-size:0.8rem;margin-top:0.75rem;";
-  hint.textContent = "Hidden accounts are removed from the Portfolio page only — their holdings, transactions, and history remain available everywhere else.";
+  hint.textContent = "Hidden accounts are removed from the Portfolio page only — their holdings, transactions, and history remain available everywhere else. Financial Institution narrows the account list on the Div. Income importer.";
   container.appendChild(hint);
 }
 

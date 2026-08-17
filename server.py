@@ -48,7 +48,8 @@ def init_db():
             account_type    TEXT NOT NULL DEFAULT 'asset',
             opening_balance REAL NOT NULL DEFAULT 0,
             created_at      TEXT NOT NULL,
-            hidden          INTEGER NOT NULL DEFAULT 0
+            hidden          INTEGER NOT NULL DEFAULT 0,
+            institution     TEXT
         );
         CREATE TABLE IF NOT EXISTS holdings (
             id                   TEXT PRIMARY KEY,
@@ -192,6 +193,14 @@ def init_db():
     # while keeping their historical data intact everywhere else)
     try:
         con.execute("ALTER TABLE accounts ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    # Add institution to accounts (e.g. "etrade"/"schwab" — narrows the account
+    # dropdown on the Div. Income importer once the user picks an institution)
+    try:
+        con.execute("ALTER TABLE accounts ADD COLUMN institution TEXT")
         con.commit()
     except sqlite3.OperationalError:
         pass  # Column already exists
@@ -343,6 +352,8 @@ def load_state(profile_id):
         }
         if a["hidden"]:
             account["hidden"] = True
+        if a["institution"]:
+            account["institution"] = a["institution"]
         accounts.append(account)
 
     # ── Categories + Subcategories ────────────────────────────────────────────
@@ -512,8 +523,8 @@ def save_state(data, profile_id):
             for acc in accounts:
                 con.execute(
                     "INSERT INTO accounts "
-                    "(id, name, tax_type, account_type, opening_balance, created_at, profile_id, hidden) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "(id, name, tax_type, account_type, opening_balance, created_at, profile_id, hidden, institution) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         acc["id"],
                         acc["name"],
@@ -523,6 +534,7 @@ def save_state(data, profile_id):
                         acc["createdAt"],
                         profile_id,
                         1 if acc.get("hidden") else 0,
+                        acc.get("institution") or None,
                     )
                 )
                 for idx, h in enumerate(acc.get("holdings", [])):

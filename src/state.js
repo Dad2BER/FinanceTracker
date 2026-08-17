@@ -158,6 +158,20 @@ export function toggleAccountHidden(id) {
   notify();
 }
 
+// Tags an account with which financial institution it belongs to (e.g.
+// "etrade" / "schwab" — see src/constants/institutions.js). Used to narrow
+// the account dropdown on the Div. Income importer. Pass "" to clear it.
+export function setAccountInstitution(id, institution) {
+  _data = {
+    ..._data,
+    accounts: _data.accounts.map((a) =>
+      a.id === id ? { ...a, institution: institution || "" } : a
+    ),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
 // ── Value History ─────────────────────────────────────────────────────────────
 
 /**
