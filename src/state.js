@@ -14,6 +14,7 @@ export function initState(data, profileId) {
     accounts:          Array.isArray(data?.accounts)   ? data.accounts   : [],
     categories:        Array.isArray(data?.categories) ? data.categories : [],
     payees:            Array.isArray(data?.payees)     ? data.payees     : [],
+    tags:              Array.isArray(data?.tags)       ? data.tags       : [],
     dividendIncome:    Array.isArray(data?.dividendIncome) ? data.dividendIncome : [],
     retirementInputs:  data?.retirementInputs  ?? null,
     budgetEstInputs:   data?.budgetEstInputs   ?? null,
@@ -680,6 +681,42 @@ export function updatePayee(id, name, subcategoryId) {
 
 export function deletePayee(id) {
   _data = { ..._data, payees: _data.payees.filter((p) => p.id !== id) };
+  saveData(_data, _profileId);
+  notify();
+}
+
+// ── Tag Getters ───────────────────────────────────────────────────────────────
+
+export function getTags() {
+  return _data.tags;
+}
+
+// ── Tag CRUD ──────────────────────────────────────────────────────────────────
+// The "Cap. Ex." tag is seeded server-side as `protected: true` and can't be
+// renamed or deleted — updateTag/deleteTag silently no-op on protected tags as
+// a defensive backstop (the UI already hides their rename/delete controls).
+
+export function addTag(name) {
+  const tag = { id: generateId(), name: name.trim(), protected: false };
+  _data = { ..._data, tags: [..._data.tags, tag] };
+  saveData(_data, _profileId);
+  notify();
+  return tag;
+}
+
+export function updateTag(id, name) {
+  _data = {
+    ..._data,
+    tags: _data.tags.map((t) =>
+      t.id === id && !t.protected ? { ...t, name: name.trim() } : t
+    ),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
+export function deleteTag(id) {
+  _data = { ..._data, tags: _data.tags.filter((t) => t.id !== id || t.protected) };
   saveData(_data, _profileId);
   notify();
 }

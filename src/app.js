@@ -1,4 +1,4 @@
-import { getAccounts, getAccount, getCategories, getPayees, subscribe, initState, recordAccountValues, updateHoldingDividend } from "./state.js";
+import { getAccounts, getAccount, getCategories, getPayees, getTags, subscribe, initState, recordAccountValues, updateHoldingDividend } from "./state.js";
 import { fetchQuotes } from "./services/prices.js";
 import { fetchDividendMetric } from "./services/finnhub.js";
 import {
@@ -13,7 +13,7 @@ import { renderTransactionList } from "./components/ledger/transactionList.js";
 import { renderLedgersView } from "./components/ledger/ledgersView.js";
 import {
   renderSettingsProfiles, renderSettingsAccounts, renderSettingsApiKeys,
-  renderSettingsDatabase, renderSettingsCategories,
+  renderSettingsDatabase, renderSettingsCategories, renderSettingsTags,
 } from "./components/settings/settingsView.js";
 import { renderReportsView }     from "./components/reports/reportsView.js";
 import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
@@ -62,6 +62,7 @@ const TAB_PAGES = {
     { id: "settings-api-keys",   label: "API Keys" },
     { id: "settings-database",   label: "Database" },
     { id: "settings-categories", label: "Categories & Payees" },
+    { id: "settings-tags",       label: "Tags" },
   ],
 };
 
@@ -88,6 +89,7 @@ const PAGE_TO_SIDEBAR = {
   "settings-api-keys":   "settings-api-keys",
   "settings-database":   "settings-database",
   "settings-categories": "settings-categories",
+  "settings-tags":       "settings-tags",
 };
 
 // ── View State ────────────────────────────────────────────────────────────────
@@ -479,6 +481,7 @@ function render() {
         account,
         getCategories(),
         getPayees(),
+        getTags(),
         () => navigateTo({ tab: "finances", page: "summary" })
       );
     }
@@ -532,6 +535,8 @@ function render() {
       renderSettingsDatabase(shellContent);
     } else if (view.page === "settings-categories") {
       renderSettingsCategories(shellContent, getCategories(), getPayees());
+    } else if (view.page === "settings-tags") {
+      renderSettingsTags(shellContent, getTags());
     } else {
       renderSettingsProfiles(shellContent, {
         profiles,

@@ -5,6 +5,7 @@ import {
   addCategory, updateCategory, deleteCategory,
   addSubcategory, updateSubcategory, deleteSubcategory,
   addPayee, updatePayee, deletePayee,
+  addTag, updateTag, deleteTag,
   getCategories, getPayees, toggleAccountHidden,
 } from "../../state.js";
 
@@ -703,4 +704,98 @@ export function renderSettingsCategories(container, categories, payees) {
     });
   });
   payeePanel.appendChild(payeeAddRow);
+}
+
+// ── Tags ─────────────────────────────────────────────────────────────────────
+
+export function renderSettingsTags(container, tags) {
+  container.innerHTML = "";
+  renderPageHeader(container, "Tags");
+
+  if (tags.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "dim";
+    empty.style.cssText = "font-size:0.88rem;padding:1rem 0;";
+    empty.textContent = "No tags yet.";
+    container.appendChild(empty);
+  } else {
+    const section = document.createElement("div");
+    section.className = "settings-tags-section";
+
+    const list = document.createElement("div");
+    list.className = "settings-tag-list";
+
+    [...tags]
+      .sort((a, b) => (b.protected ? 1 : 0) - (a.protected ? 1 : 0) || a.name.localeCompare(b.name))
+      .forEach((tag) => {
+        const row = document.createElement("div");
+        row.className = "settings-tag-row";
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "settings-tag-name";
+        nameSpan.textContent = tag.name;
+
+        const actions = document.createElement("span");
+        actions.className = "settings-tag-actions";
+
+        if (tag.protected) {
+          const badge = document.createElement("span");
+          badge.className = "settings-tag-protected-badge";
+          badge.title = "This tag can't be renamed or deleted";
+          badge.textContent = "Protected";
+          actions.appendChild(badge);
+        } else {
+          const editBtn = document.createElement("button");
+          editBtn.className = "icon-btn";
+          editBtn.title = "Rename";
+          editBtn.textContent = "✏";
+          editBtn.addEventListener("click", () => {
+            showNamePrompt({
+              title: "Rename Tag",
+              label: "Tag Name",
+              initialValue: tag.name,
+              onSave: (name) => updateTag(tag.id, name),
+            });
+          });
+
+          const delBtn = document.createElement("button");
+          delBtn.className = "icon-btn icon-btn-danger";
+          delBtn.title = "Delete";
+          delBtn.textContent = "🗑";
+          delBtn.addEventListener("click", () => {
+            showConfirmDialog({
+              title: "Delete Tag",
+              message: `Delete tag "${tag.name}"? Existing transactions using this tag are not affected.`,
+              onConfirm: () => deleteTag(tag.id),
+            });
+          });
+
+          actions.appendChild(editBtn);
+          actions.appendChild(delBtn);
+        }
+
+        row.appendChild(nameSpan);
+        row.appendChild(actions);
+        list.appendChild(row);
+      });
+
+    section.appendChild(list);
+    container.appendChild(section);
+  }
+
+  // Add tag row
+  const addRow = document.createElement("div");
+  addRow.className = "settings-tag-add";
+  const addBtn = document.createElement("button");
+  addBtn.className = "btn btn-secondary btn-sm";
+  addBtn.textContent = "+ Add Tag";
+  addBtn.addEventListener("click", () => {
+    showNamePrompt({
+      title: "Add Tag",
+      label: "Tag Name",
+      onSave: (name) => addTag(name),
+    });
+  });
+  addRow.appendChild(addBtn);
+  container.appendChild(addRow);
 }

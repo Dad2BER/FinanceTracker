@@ -13,7 +13,7 @@ function escHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
-export function showTransactionForm(accountId, categories, payees, transaction = null) {
+export function showTransactionForm(accountId, categories, payees, tags, transaction = null) {
   const isEdit = transaction !== null;
 
   const el = document.createElement("div");
@@ -23,6 +23,18 @@ export function showTransactionForm(accountId, categories, payees, transaction =
   const payeeOptions = payees
     .map((p) => `<option value="${escHtml(p.name)}">`)
     .join("");
+
+  // Build tag select options — if the transaction's current tag is no longer
+  // in the tag list (e.g. it was later deleted), keep it as a selectable
+  // option so editing the transaction doesn't silently drop the value.
+  const currentTag = isEdit ? (transaction.tag || "") : "";
+  const tagNames = tags.map((t) => t.name);
+  let tagOptions = tags
+    .map((t) => `<option value="${escHtml(t.name)}">${escHtml(t.name)}</option>`)
+    .join("");
+  if (currentTag && !tagNames.includes(currentTag)) {
+    tagOptions += `<option value="${escHtml(currentTag)}">${escHtml(currentTag)} (no longer in list)</option>`;
+  }
 
   el.innerHTML = `
     <h3>${isEdit ? "Edit Transaction" : "Add Transaction"}</h3>
@@ -48,8 +60,10 @@ export function showTransactionForm(accountId, categories, payees, transaction =
 
     <div class="form-group">
       <label for="tf-tag">Tag <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-      <input id="tf-tag" type="text" class="form-input" placeholder="e.g. Business, Vacation"
-        value="${isEdit ? escHtml(transaction.tag || "") : ""}">
+      <select id="tf-tag" class="form-select">
+        <option value="">— None —</option>
+        ${tagOptions}
+      </select>
     </div>
 
     <div class="form-group">
@@ -70,6 +84,7 @@ export function showTransactionForm(accountId, categories, payees, transaction =
   // ── Category/Subcategory section ──────────────────────────────────────────
   const catSection = el.querySelector("#tf-cat-section");
   const payeeInput = el.querySelector("#tf-payee");
+  el.querySelector("#tf-tag").value = currentTag;
 
   // State for the category section
   let resolvedSubcategoryId = isEdit ? (transaction.subcategoryId || null) : null;

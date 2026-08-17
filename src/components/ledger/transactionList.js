@@ -44,7 +44,7 @@ function escHtml(str) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function renderTransactionList(container, account, categories, payees, onBack) {
+export function renderTransactionList(container, account, categories, payees, tags, onBack) {
   container.innerHTML = "";
 
   const transactions = account.transactions || [];
@@ -85,7 +85,7 @@ export function renderTransactionList(container, account, categories, payees, on
     showImportModal(account.id, categories, payees, account.transactions || [])
   );
   header.querySelector("#add-tx-btn").addEventListener("click", () =>
-    showTransactionForm(account.id, categories, payees, null)
+    showTransactionForm(account.id, categories, payees, tags, null)
   );
 
   // ── Balance Banner ──────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ export function renderTransactionList(container, account, categories, payees, on
     empty.className = "empty-state";
     empty.innerHTML = `<p>No transactions yet.</p><button class="btn btn-primary">+ Add First Transaction</button>`;
     empty.querySelector("button").addEventListener("click", () =>
-      showTransactionForm(account.id, categories, payees, null)
+      showTransactionForm(account.id, categories, payees, tags, null)
     );
     container.appendChild(empty);
     return;
@@ -169,7 +169,7 @@ export function renderTransactionList(container, account, categories, payees, on
     const [excludeBtn, editBtn, deleteBtn] = tr.querySelectorAll("button");
     excludeBtn.addEventListener("click", () => toggleTransactionExcluded(account.id, tx.id));
     editBtn.addEventListener("click", () =>
-      showTransactionForm(account.id, categories, payees, tx)
+      showTransactionForm(account.id, categories, payees, tags, tx)
     );
     deleteBtn.addEventListener("click", () =>
       showConfirmDialog({

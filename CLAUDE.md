@@ -70,7 +70,8 @@ settings
   ├── settings-accounts    (Accounts — Hide/Show on Portfolio page)
   ├── settings-api-keys    (API Keys)
   ├── settings-database    (Database backup/restore)
-  └── settings-categories  (Categories & Payees)
+  ├── settings-categories  (Categories & Payees)
+  └── settings-tags        (Tags)
 ```
 
 **Adding a new tab page:** update `TAB_PAGES`, `PAGE_TO_SIDEBAR`, the `render()` dispatch in `app.js`, and add any needed CSS to `index.html`.
@@ -92,6 +93,7 @@ addHolding / updateHolding / deleteHolding
 addTransaction / updateTransaction / deleteTransaction
 addCategory / updateCategory / deleteCategory
 addPayee / updatePayee / deletePayee
+addTag / updateTag / deleteTag  // no-op on the protected "Cap. Ex." tag
 recordAccountValue(accountId, date, value)
 updateHoldingDividend(accountId, holdingId, dividendPerShare)  // lightweight; used by startup fetch
 updateDividendBySymbol(symbol, dividendPerShare, dividendReinvested)  // updates all holdings of a symbol
@@ -190,12 +192,24 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
   id: string,
   date: ISO string,
   amount: number,  // positive = income, negative = expense
-  payee: string,
-  categoryId: string,
-  subcategory: string,
-  note: string,
+  payeeName: string,
+  subcategoryId: string,  // optional
+  categoryId: string,     // optional — resolved from subcategoryId at write time
+  tag: string,             // optional — free-text value, but UI only offers names from getTags()
+  excluded: boolean,       // optional — excluded from budget/spend reports
 }
 ```
+
+### Tag
+```js
+{
+  id: string,
+  name: string,
+  protected: boolean,  // true only for the seeded "Cap. Ex." tag — blocks rename/delete
+}
+```
+- Tags are a managed pick-list (Settings → Tags), but a transaction's `tag` is still stored as a plain string, not a tag id — deleting a tag does not touch transactions that already used its name.
+- Every profile is seeded with one non-deletable, non-renamable tag: **"Cap. Ex."** (`protected: true`), both on profile creation and via a one-time migration for existing profiles in `server.py`.
 
 ### Retirement Inputs (`_s` in `retirementView.js`)
 ```js

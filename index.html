@@ -276,6 +276,36 @@
       flex-shrink: 0;
     }
 
+    /* ── Settings Tags Section ───────────────────────────────────────────── */
+    .settings-tags-section {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.25rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    .settings-tag-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--color-border);
+      gap: 0.75rem;
+    }
+    .settings-tag-row:last-child { border-bottom: none; }
+    .settings-tag-name { flex: 1; font-size: 0.9rem; }
+    .settings-tag-actions { display: flex; align-items: center; gap: 0.15rem; flex-shrink: 0; }
+    .settings-tag-protected-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--color-text-dim);
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 0.15rem 0.5rem;
+    }
+    .settings-tag-add { padding-top: 0.5rem; }
+
     /* ── Settings API Keys Section ───────────────────────────────────────── */
     .settings-api-section {
       background: var(--color-surface);

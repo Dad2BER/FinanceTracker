@@ -76,6 +76,12 @@ def init_db():
             name           TEXT NOT NULL,
             subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL
         );
+        CREATE TABLE IF NOT EXISTS tags (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            protected  INTEGER NOT NULL DEFAULT 0,
+            profile_id TEXT REFERENCES profiles(id)
+        );
         CREATE TABLE IF NOT EXISTS transactions (
             id             TEXT PRIMARY KEY,
             account_id     TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -223,6 +229,20 @@ def init_db():
         con.execute("UPDATE payees     SET profile_id = ? WHERE profile_id IS NULL", (default_id,))
         con.commit()
 
+    # Every profile must have a protected "Cap. Ex." tag (seeded once; users
+    # can't rename or delete it, so this only needs to run when it's missing).
+    profile_ids = [row[0] for row in con.execute("SELECT id FROM profiles").fetchall()]
+    for pid in profile_ids:
+        has_capex = con.execute(
+            "SELECT 1 FROM tags WHERE profile_id = ? AND name = 'Cap. Ex.'", (pid,)
+        ).fetchone()
+        if not has_capex:
+            con.execute(
+                "INSERT INTO tags (id, name, protected, profile_id) VALUES (?, ?, 1, ?)",
+                (str(uuid.uuid4()), "Cap. Ex.", pid)
+            )
+    con.commit()
+
     con.close()
 
 
@@ -344,6 +364,16 @@ def load_state(profile_id):
             payee["categoryId"] = p["category_id"]
         payees.append(payee)
 
+    # ── Tags ──────────────────────────────────────────────────────────────────
+    tag_rows = con.execute(
+        "SELECT * FROM tags WHERE profile_id = ? ORDER BY protected DESC, name",
+        (profile_id,)
+    ).fetchall()
+    tags = [
+        {"id": t["id"], "name": t["name"], "protected": bool(t["protected"])}
+        for t in tag_rows
+    ]
+
     # ── Dividend Income ───────────────────────────────────────────────────────
     div_rows = con.execute(
         "SELECT * FROM dividend_income WHERE profile_id = ? ORDER BY date",
@@ -380,6 +410,7 @@ def load_state(profile_id):
         "accounts":         accounts,
         "categories":       categories,
         "payees":           payees,
+        "tags":             tags,
         "dividendIncome":   dividend_income,
         "retirementInputs": ret_inputs,
     }
@@ -389,6 +420,7 @@ def save_state(data, profile_id):
     accounts        = data.get("accounts",        [])
     categories      = data.get("categories",      [])
     payees          = data.get("payees",          [])
+    tags            = data.get("tags",            [])
     dividend_income = data.get("dividendIncome",  [])
 
     con = sqlite3.connect(DB_PATH)
@@ -406,6 +438,7 @@ def save_state(data, profile_id):
                 con.execute(f"DELETE FROM holdings    WHERE account_id IN ({ph})", account_ids)
 
             con.execute("DELETE FROM payees WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM tags   WHERE profile_id = ?", (profile_id,))
 
             cat_ids = [
                 row[0] for row in
@@ -436,6 +469,13 @@ def save_state(data, profile_id):
                 con.execute(
                     "INSERT INTO payees (id, name, subcategory_id, profile_id) VALUES (?, ?, ?, ?)",
                     (p["id"], p["name"], p.get("subcategoryId"), profile_id)
+                )
+
+            # ── Tags ───────────────────────────────────────────────────────────
+            for t in tags:
+                con.execute(
+                    "INSERT INTO tags (id, name, protected, profile_id) VALUES (?, ?, ?, ?)",
+                    (t["id"], t["name"], 1 if t.get("protected") else 0, profile_id)
                 )
 
             # ── Accounts + Holdings + Transactions ─────────────────────────────
@@ -548,6 +588,10 @@ def create_profile(name):
                 "INSERT INTO profiles (id, name, created_at) VALUES (?, ?, ?)",
                 (profile_id, name.strip(), now)
             )
+            con.execute(
+                "INSERT INTO tags (id, name, protected, profile_id) VALUES (?, ?, 1, ?)",
+                (str(uuid.uuid4()), "Cap. Ex.", profile_id)
+            )
     finally:
         con.close()
     return {"id": profile_id, "name": name.strip(), "createdAt": now}
@@ -578,6 +622,7 @@ def delete_profile(profile_id):
                 con.execute(f"DELETE FROM holdings    WHERE account_id IN ({ph})", account_ids)
 
             con.execute("DELETE FROM payees WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM tags   WHERE profile_id = ?", (profile_id,))
 
             cat_ids = [
                 row[0] for row in
