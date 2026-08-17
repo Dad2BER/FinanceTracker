@@ -22,6 +22,13 @@ function escHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
+function renderPageHeader(container, title) {
+  const header = document.createElement("div");
+  header.className = "view-header";
+  header.innerHTML = `<h1>${escHtml(title)}</h1>`;
+  container.appendChild(header);
+}
+
 function showNamePrompt({ title, label, initialValue = "", onSave }) {
   const el = document.createElement("div");
   el.innerHTML = `
@@ -130,155 +137,121 @@ function showPayeeEditPrompt({ initialName = "", initialSubcategoryId = null, ca
   setTimeout(() => el.querySelector("#pe-name").focus(), 50);
 }
 
-// ── Main View ─────────────────────────────────────────────────────────────────
+// ── Profiles ─────────────────────────────────────────────────────────────────
 
-export function renderSettingsView(container, categories, payees, onBack, onApiKeyChanged, profileProps) {
-  // ── Validate & default selection state ──────────────────────────────────────
-  if (!categories.find((c) => c.id === _selectedCategoryId)) {
-    _selectedCategoryId = categories[0]?.id ?? null;
-  }
-  const selectedCategory = categories.find((c) => c.id === _selectedCategoryId) ?? null;
-
-  if (!selectedCategory?.subcategories.find((s) => s.id === _selectedSubcategoryId)) {
-    _selectedSubcategoryId = selectedCategory?.subcategories[0]?.id ?? null;
-  }
-  const selectedSub = selectedCategory?.subcategories.find((s) => s.id === _selectedSubcategoryId) ?? null;
-
-  // Helper: re-render this view with fresh state (called after selection changes)
-  function rerender() {
-    renderSettingsView(container, getCategories(), getPayees(), onBack, onApiKeyChanged, profileProps);
-  }
-
+export function renderSettingsProfiles(container, profileProps) {
   container.innerHTML = "";
+  renderPageHeader(container, "Profiles");
+  if (!profileProps) return;
 
-  // ── Header ──────────────────────────────────────────────────────────────────
-  const header = document.createElement("div");
-  header.className = "view-header";
-  header.innerHTML = `
-    <div class="back-row">
-      <button class="btn btn-ghost btn-sm" id="back-btn">&#8592; Back</button>
-    </div>
-    <div class="detail-title-row">
-      <h1>Settings</h1>
-    </div>
-  `;
-  container.appendChild(header);
-  header.querySelector("#back-btn").addEventListener("click", onBack);
+  const { profiles, currentProfileId, onCreateProfile, onRenameProfile, onDeleteProfile } = profileProps;
 
-  // ── Profiles ──────────────────────────────────────────────────────────────────
-  if (profileProps) {
-    const { profiles, currentProfileId, onCreateProfile, onRenameProfile, onDeleteProfile } = profileProps;
+  const profileSection = document.createElement("div");
+  profileSection.className = "settings-profiles-section";
 
-    const profileSection = document.createElement("div");
-    profileSection.className = "settings-profiles-section";
+  const profileList = document.createElement("div");
+  profileList.className = "settings-profile-list";
 
-    const profileLabel = document.createElement("div");
-    profileLabel.className = "settings-section-label";
-    profileLabel.textContent = "Profiles";
-    profileSection.appendChild(profileLabel);
+  profiles.forEach((p) => {
+    const row = document.createElement("div");
+    const isCurrent = p.id === currentProfileId;
+    row.className = "settings-profile-row" + (isCurrent ? " current" : "");
 
-    const profileList = document.createElement("div");
-    profileList.className = "settings-profile-list";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "settings-profile-name";
+    nameSpan.textContent = p.name + (isCurrent ? " (current)" : "");
 
-    profiles.forEach((p) => {
-      const row = document.createElement("div");
-      const isCurrent = p.id === currentProfileId;
-      row.className = "settings-profile-row" + (isCurrent ? " current" : "");
+    const actions = document.createElement("span");
+    actions.className = "settings-profile-actions";
 
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "settings-profile-name";
-      nameSpan.textContent = p.name + (isCurrent ? " (current)" : "");
-
-      const actions = document.createElement("span");
-      actions.className = "settings-profile-actions";
-
-      const renBtn = document.createElement("button");
-      renBtn.className = "icon-btn";
-      renBtn.title = "Rename";
-      renBtn.textContent = "✏";
-      renBtn.addEventListener("click", () => {
-        showNamePrompt({
-          title: "Rename Profile",
-          label: "Profile Name",
-          initialValue: p.name,
-          onSave: async (name) => {
-            try {
-              await onRenameProfile(p.id, name);
-              rerender();
-            } catch (e) {
-              alert("Failed to rename profile: " + e.message);
-            }
-          },
-        });
-      });
-
-      const delBtn = document.createElement("button");
-      delBtn.className = "icon-btn icon-btn-danger";
-      delBtn.title = "Delete";
-      delBtn.textContent = "🗑";
-      if (profiles.length <= 1) {
-        delBtn.disabled = true;
-        delBtn.title = "Cannot delete the last profile";
-      } else if (isCurrent) {
-        delBtn.disabled = true;
-        delBtn.title = "Switch to another profile first";
-      }
-      delBtn.addEventListener("click", () => {
-        if (delBtn.disabled) return;
-        showConfirmDialog({
-          title: "Delete Profile",
-          message: `Delete "${p.name}" and ALL its accounts, holdings, transactions, categories, and payees? This cannot be undone.`,
-          onConfirm: async () => {
-            try {
-              await onDeleteProfile(p.id);
-              rerender();
-            } catch (e) {
-              alert("Failed to delete profile: " + e.message);
-            }
-          },
-        });
-      });
-
-      actions.appendChild(renBtn);
-      actions.appendChild(delBtn);
-      row.appendChild(nameSpan);
-      row.appendChild(actions);
-      profileList.appendChild(row);
-    });
-
-    profileSection.appendChild(profileList);
-
-    // Add profile button
-    const addProfileRow = document.createElement("div");
-    addProfileRow.className = "settings-profile-add";
-    const addProfileBtn = document.createElement("button");
-    addProfileBtn.className = "btn btn-secondary btn-sm";
-    addProfileBtn.textContent = "+ Add Profile";
-    addProfileBtn.addEventListener("click", () => {
+    const renBtn = document.createElement("button");
+    renBtn.className = "icon-btn";
+    renBtn.title = "Rename";
+    renBtn.textContent = "✏";
+    renBtn.addEventListener("click", () => {
       showNamePrompt({
-        title: "Add Profile",
+        title: "Rename Profile",
         label: "Profile Name",
+        initialValue: p.name,
         onSave: async (name) => {
           try {
-            await onCreateProfile(name);
-            rerender();
+            await onRenameProfile(p.id, name);
           } catch (e) {
-            alert("Failed to create profile: " + e.message);
+            alert("Failed to rename profile: " + e.message);
           }
         },
       });
     });
-    addProfileRow.appendChild(addProfileBtn);
-    profileSection.appendChild(addProfileRow);
 
-    container.appendChild(profileSection);
-  }
+    const delBtn = document.createElement("button");
+    delBtn.className = "icon-btn icon-btn-danger";
+    delBtn.title = "Delete";
+    delBtn.textContent = "🗑";
+    if (profiles.length <= 1) {
+      delBtn.disabled = true;
+      delBtn.title = "Cannot delete the last profile";
+    } else if (isCurrent) {
+      delBtn.disabled = true;
+      delBtn.title = "Switch to another profile first";
+    }
+    delBtn.addEventListener("click", () => {
+      if (delBtn.disabled) return;
+      showConfirmDialog({
+        title: "Delete Profile",
+        message: `Delete "${p.name}" and ALL its accounts, holdings, transactions, categories, and payees? This cannot be undone.`,
+        onConfirm: async () => {
+          try {
+            await onDeleteProfile(p.id);
+          } catch (e) {
+            alert("Failed to delete profile: " + e.message);
+          }
+        },
+      });
+    });
 
-  // ── API Keys ─────────────────────────────────────────────────────────────────
+    actions.appendChild(renBtn);
+    actions.appendChild(delBtn);
+    row.appendChild(nameSpan);
+    row.appendChild(actions);
+    profileList.appendChild(row);
+  });
+
+  profileSection.appendChild(profileList);
+
+  // Add profile button
+  const addProfileRow = document.createElement("div");
+  addProfileRow.className = "settings-profile-add";
+  const addProfileBtn = document.createElement("button");
+  addProfileBtn.className = "btn btn-secondary btn-sm";
+  addProfileBtn.textContent = "+ Add Profile";
+  addProfileBtn.addEventListener("click", () => {
+    showNamePrompt({
+      title: "Add Profile",
+      label: "Profile Name",
+      onSave: async (name) => {
+        try {
+          await onCreateProfile(name);
+        } catch (e) {
+          alert("Failed to create profile: " + e.message);
+        }
+      },
+    });
+  });
+  addProfileRow.appendChild(addProfileBtn);
+  profileSection.appendChild(addProfileRow);
+
+  container.appendChild(profileSection);
+}
+
+// ── API Keys ─────────────────────────────────────────────────────────────────
+
+export function renderSettingsApiKeys(container, onApiKeyChanged) {
+  container.innerHTML = "";
+  renderPageHeader(container, "API Keys");
+
   const apiSection = document.createElement("div");
   apiSection.className = "settings-api-section";
   apiSection.innerHTML = `
-    <div class="settings-section-label">API Keys</div>
     <div class="form-group">
       <label for="finnhub-key-input">Finnhub API Key</label>
       <div class="settings-api-input-row">
@@ -323,12 +296,18 @@ export function renderSettingsView(container, categories, payees, onBack, onApiK
     msg.textContent = "Saved!";
     setTimeout(() => { msg.textContent = ""; }, 2500);
   });
+}
 
-  // ── Database Backup / Restore ────────────────────────────────────────────────
+// ── Database Backup / Restore ─────────────────────────────────────────────────
+
+export function renderSettingsDatabase(container) {
+  container.innerHTML = "";
+  renderPageHeader(container, "Database");
+
   const dbSection = document.createElement("div");
   dbSection.className = "settings-db-section";
   dbSection.innerHTML = `
-    <span class="settings-db-label">Database</span>
+    <span class="settings-db-label">Backup or restore the entire database.</span>
     <div class="settings-db-actions">
       <button class="btn btn-secondary btn-sm" id="db-backup-btn">⬇ Backup</button>
       <button class="btn btn-secondary btn-sm settings-db-restore-btn" id="db-restore-btn">⬆ Restore</button>
@@ -403,6 +382,29 @@ export function renderSettingsView(container, categories, payees, onBack, onApiK
       alert("Restore failed: " + e.message);
     }
   });
+}
+
+// ── Categories & Payees ────────────────────────────────────────────────────────
+
+export function renderSettingsCategories(container, categories, payees) {
+  // ── Validate & default selection state ──────────────────────────────────────
+  if (!categories.find((c) => c.id === _selectedCategoryId)) {
+    _selectedCategoryId = categories[0]?.id ?? null;
+  }
+  const selectedCategory = categories.find((c) => c.id === _selectedCategoryId) ?? null;
+
+  if (!selectedCategory?.subcategories.find((s) => s.id === _selectedSubcategoryId)) {
+    _selectedSubcategoryId = selectedCategory?.subcategories[0]?.id ?? null;
+  }
+  const selectedSub = selectedCategory?.subcategories.find((s) => s.id === _selectedSubcategoryId) ?? null;
+
+  // Helper: re-render this page with fresh state (called after selection changes)
+  function rerender() {
+    renderSettingsCategories(container, getCategories(), getPayees());
+  }
+
+  container.innerHTML = "";
+  renderPageHeader(container, "Categories & Payees");
 
   // ── Category Toolbar ────────────────────────────────────────────────────────
   const toolbar = document.createElement("div");

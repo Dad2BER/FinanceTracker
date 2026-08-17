@@ -11,7 +11,10 @@ import { renderAccountList } from "./components/accounts/accountList.js";
 import { renderHoldingList } from "./components/holdings/holdingList.js";
 import { renderTransactionList } from "./components/ledger/transactionList.js";
 import { renderLedgersView } from "./components/ledger/ledgersView.js";
-import { renderSettingsView } from "./components/settings/settingsView.js";
+import {
+  renderSettingsProfiles, renderSettingsApiKeys,
+  renderSettingsDatabase, renderSettingsCategories,
+} from "./components/settings/settingsView.js";
 import { renderReportsView }     from "./components/reports/reportsView.js";
 import { renderSubcatSpendView } from "./components/reports/subcatSpendView.js";
 import { renderTagSpendView } from "./components/reports/tagSpendView.js";
@@ -53,6 +56,12 @@ const TAB_PAGES = {
     { id: "ret-strategies",  label: "Withdrawal Strategies" },
     { id: "ret-historic",    label: "Historic Returns" },
   ],
+  settings:   [
+    { id: "settings-profiles",   label: "Profiles" },
+    { id: "settings-api-keys",   label: "API Keys" },
+    { id: "settings-database",   label: "Database" },
+    { id: "settings-categories", label: "Categories & Payees" },
+  ],
 };
 
 // Maps a content-page id to the sidebar entry that should appear active
@@ -73,6 +82,10 @@ const PAGE_TO_SIDEBAR = {
   "ret-strategies":   "ret-strategies",
   "ret-budget-est":   "ret-budget-est",
   "ret-historic":     "ret-historic",
+  "settings-profiles":   "settings-profiles",
+  "settings-api-keys":   "settings-api-keys",
+  "settings-database":   "settings-database",
+  "settings-categories": "settings-categories",
 };
 
 // ── View State ────────────────────────────────────────────────────────────────
@@ -301,7 +314,7 @@ function initShell() {
       navigateTo(prevNonSettingsView || { tab: "finances", page: "summary" });
     } else {
       prevNonSettingsView = { ...view };
-      navigateTo({ tab: "settings", page: "settings" });
+      navigateTo({ tab: "settings", page: "settings-profiles" });
     }
   });
 
@@ -494,12 +507,8 @@ function render() {
         () => navigateTo({ tab: "retirement", page: "ret-simulation" }));
     }
   } else if (view.tab === "settings") {
-    renderSettingsView(
-      shellContent,
-      getCategories(),
-      getPayees(),
-      () => navigateTo(prevNonSettingsView || { tab: "finances", page: "summary" }),
-      (finnhubKey, avKey) => {
+    if (view.page === "settings-api-keys") {
+      renderSettingsApiKeys(shellContent, (finnhubKey, avKey) => {
         if (finnhubKey !== undefined) {
           window.__FINNHUB_API_KEY__ = finnhubKey;
           saveApiKey(finnhubKey);
@@ -512,29 +521,33 @@ function render() {
         prices = null;
         pricesLoading = false;
         pricesError = null;
-      },
-      // Profile props passed to settings view
-      {
+      });
+    } else if (view.page === "settings-database") {
+      renderSettingsDatabase(shellContent);
+    } else if (view.page === "settings-categories") {
+      renderSettingsCategories(shellContent, getCategories(), getPayees());
+    } else {
+      renderSettingsProfiles(shellContent, {
         profiles,
         currentProfileId,
         onCreateProfile: async (name) => {
           const newProfile = await createProfile(name);
           profiles = [...profiles, newProfile];
-          updateShell();
+          render();
           return newProfile;
         },
         onRenameProfile: async (id, name) => {
           const updated = await renameProfile(id, name);
           profiles = profiles.map((p) => p.id === id ? { ...p, name: updated.name } : p);
-          updateShell();
+          render();
         },
         onDeleteProfile: async (id) => {
           await deleteProfile(id);
           profiles = profiles.filter((p) => p.id !== id);
-          updateShell();
+          render();
         },
-      }
-    );
+      });
+    }
   }
 }
 

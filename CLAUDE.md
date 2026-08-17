@@ -42,7 +42,7 @@ Zero-dependency vanilla JS SPA using native ES modules (`type="module"`). No fra
 | `src/app.js` | App bootstrap, shell/navigation, price-fetch orchestration |
 
 ### Navigation Model (`src/app.js`)
-- Three top-level **tabs**: `finances`, `reports`, `retirement` (plus `settings`)
+- Three top-level **tabs**: `finances`, `reports`, `retirement` (plus `settings`, reached via the gear icon rather than a tab button)
 - Each tab has **sidebar pages** defined in `TAB_PAGES`
 - View state is `{ tab, page, accountId? }` — no router library; navigation is `view = newView; render()`
 - `PAGE_TO_SIDEBAR` maps content page IDs to their active sidebar entry
@@ -65,7 +65,11 @@ retirement
   ├── ret-historic-sim    (Historic Simulation)
   └── ret-historic        (Historic Returns table)
 
-settings  (no sidebar pages)
+settings
+  ├── settings-profiles    (Profiles)
+  ├── settings-api-keys    (API Keys)
+  ├── settings-database    (Database backup/restore)
+  └── settings-categories  (Categories & Payees)
 ```
 
 **Adding a new tab page:** update `TAB_PAGES`, `PAGE_TO_SIDEBAR`, the `render()` dispatch in `app.js`, and add any needed CSS to `index.html`.
