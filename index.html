@@ -594,7 +594,7 @@
     }
     .filter-date:focus { border-color: var(--color-primary); }
 
-    /* ── Filter-row column sum (Assets page Value cell) ─────────────────── */
+    /* ── Filter-row column sum (Assets page Value / Dividend cells) ──────── */
     .filter-col-sum {
       display: block;
       text-align: right;
@@ -603,6 +603,9 @@
       color: var(--color-success);
       white-space: nowrap;
       padding: 0.1rem 0;
+    }
+    .filter-col-sum.filter-col-sum-center {
+      text-align: center;
     }
 
     /* ── Daily % Change Badge (holdings price cell) ──────────────────────── */

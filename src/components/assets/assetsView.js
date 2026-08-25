@@ -544,5 +544,34 @@ export function renderAssetsView(
   tableWrapper.querySelector("table").addEventListener("input",  updateVisibleSum);
   tableWrapper.querySelector("table").addEventListener("change", updateVisibleSum);
 
+  // ── Effective dividend rate in the filter row's Dividend cell ────────────────
+  // Sum of annual dividend $ (shares × dividendPerShare) over sum of value, for
+  // currently visible rows only — recomputed alongside the Value column's sum.
+  const divTh    = filterRow?.querySelectorAll("th")[5] ?? null;
+  const divRateEl = divTh ? document.createElement("span") : null;
+  if (divRateEl) {
+    divRateEl.className = "filter-col-sum filter-col-sum-center";
+    divTh.appendChild(divRateEl);
+  }
+
+  function updateVisibleDividendRate() {
+    if (!divRateEl) return;
+    let divSum = 0, valSum = 0;
+    tableWrapper.querySelectorAll("tbody tr").forEach((row) => {
+      if (row.style.display === "none") return;
+      const entry = rowEntryMap.get(row);
+      if (!entry) return;
+      const price = entry.isCash ? 1 : (prices ? prices[entry.symbol] : undefined);
+      if (price === undefined) return;
+      valSum += price * entry.shares;
+      if (entry.dividendPerShare > 0) divSum += entry.shares * entry.dividendPerShare;
+    });
+    divRateEl.textContent = valSum > 0 ? `${(divSum / valSum * 100).toFixed(2)}%` : "—";
+  }
+
+  updateVisibleDividendRate();
+  tableWrapper.querySelector("table").addEventListener("input",  updateVisibleDividendRate);
+  tableWrapper.querySelector("table").addEventListener("change", updateVisibleDividendRate);
+
   container.appendChild(tableWrapper);
 }
