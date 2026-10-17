@@ -55,12 +55,18 @@ function parseAmount(str) {
   return isNaN(num) ? null : negative ? -num : num;
 }
 
+// Lowercase and collapse runs of whitespace/punctuation to a single space so
+// bank padding ("BILLPAY   CHASE"), NBSPs, or hyphens don't defeat matching.
+function normalizeForMatch(str) {
+  return (str || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 function findMatchingPayee(description, payees) {
-  const desc = description.toLowerCase();
+  const desc = normalizeForMatch(description);
   let best = null;
   let bestLen = 0;
   for (const payee of payees) {
-    const name = payee.name.toLowerCase();
+    const name = normalizeForMatch(payee.name);
     if (name.length > 0 && desc.includes(name) && name.length > bestLen) {
       best = payee;
       bestLen = name.length;
