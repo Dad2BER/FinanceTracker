@@ -228,12 +228,12 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
   accountId: string,    // a ledger (checking) account
   checkNumber: string,
   merchant: string,     // who the check was actually written to
-  amount: number,       // optional, stored positive; when set it must match |tx.amount| to auto-link
 }
 ```
+- No amount is stored on the check — the register page displays the linked transaction's amount (single source of truth).
 - The link lives on the transaction (`tx.checkId`), not the check; one check ↔ at most one transaction. The bank's raw `payeeName` ("Check 1003", "Draft 3047", "3055") is never overwritten.
 - Display/grouping code must use `resolvePayeeName(tx)` (merchant when linked, else `payeeName`) — used by the ledger transaction list, the combined Ledgers view, and Subcategory Spend. Raw `payeeName` is still used for import dedup and payee→category matching.
-- Auto-link (`linkUnmatchedChecks` in `state.js`) runs on addCheck/updateCheck, addTransaction, and addTransactionsBatch (CSV import), plus the "Match Transactions" button: matches same account + check # parsed from payee by `extractCheckNumber` (leading zeros ignored) + amount if set. Users can also link/unlink by hand via the "Check #" picker in the transaction form (only shown when the account has check rows).
+- Auto-link (`linkUnmatchedChecks` in `state.js`) runs on addCheck/updateCheck, addTransaction, and addTransactionsBatch (CSV import), plus the "Match Transactions" button: matches same account + check # parsed from payee by `extractCheckNumber` (leading zeros ignored). Editing a check's account or number drops its link (then re-matches); a merchant-only edit keeps it. Users can also link/unlink by hand via the "Check #" picker in the transaction form (only shown when the account has check rows).
 - SQLite: `check_register` table; `transactions.check_id` column.
 
 ### DividendIncome

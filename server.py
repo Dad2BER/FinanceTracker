@@ -123,8 +123,7 @@ def init_db():
             profile_id   TEXT REFERENCES profiles(id) ON DELETE CASCADE,
             account_id   TEXT,
             check_number TEXT NOT NULL,
-            merchant     TEXT NOT NULL,
-            amount       REAL
+            merchant     TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS roc_rates (
             id         TEXT PRIMARY KEY,
@@ -457,15 +456,12 @@ def load_state(profile_id):
     ).fetchall()
     checks = []
     for c in check_rows:
-        check = {
+        checks.append({
             "id":          c["id"],
             "accountId":   c["account_id"],
             "checkNumber": c["check_number"],
             "merchant":    c["merchant"],
-        }
-        if c["amount"] is not None:
-            check["amount"] = c["amount"]
-        checks.append(check)
+        })
 
     # ── Profile Settings (retirement inputs, etc.) ────────────────────────────
     settings_row = con.execute(
@@ -649,15 +645,14 @@ def save_state(data, profile_id):
             # ── Check Register ──────────────────────────────────────────────────
             for c in checks:
                 con.execute(
-                    "INSERT INTO check_register (id, profile_id, account_id, check_number, merchant, amount) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO check_register (id, profile_id, account_id, check_number, merchant) "
+                    "VALUES (?, ?, ?, ?, ?)",
                     (
                         c["id"],
                         profile_id,
                         c.get("accountId"),
                         str(c["checkNumber"]),
                         c["merchant"],
-                        c.get("amount"),
                     )
                 )
 

@@ -1,6 +1,5 @@
 import { Modal } from "../ui/modal.js";
 import { addTransaction, updateTransaction, addPayee, getChecks, getAccount } from "../../state.js";
-import { formatCurrency } from "../../utils/currency.js";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -50,7 +49,7 @@ export function showTransactionForm(accountId, categories, payees, tags, transac
     .sort((a, b) => (parseInt(b.checkNumber, 10) || 0) - (parseInt(a.checkNumber, 10) || 0));
   const currentCheckId = isEdit ? (transaction.checkId || "") : "";
   const checkOptions = accountChecks
-    .map((c) => `<option value="${escHtml(c.id)}">#${escHtml(c.checkNumber)} — ${escHtml(c.merchant)}${c.amount != null ? ` (${formatCurrency(c.amount)})` : ""}</option>`)
+    .map((c) => `<option value="${escHtml(c.id)}">#${escHtml(c.checkNumber)} — ${escHtml(c.merchant)}</option>`)
     .join("");
   const checkGroupHtml = accountChecks.length === 0 ? "" : `
     <div class="form-group">

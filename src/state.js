@@ -594,13 +594,12 @@ export function extractCheckNumber(payeeName) {
 }
 
 function checkMatchesTx(check, tx) {
-  if (extractCheckNumber(tx.payeeName) !== normCheckNo(check.checkNumber)) return false;
-  return check.amount == null || Math.abs(Math.abs(tx.amount) - check.amount) < 0.005;
+  return extractCheckNumber(tx.payeeName) === normCheckNo(check.checkNumber);
 }
 
 // Links every not-yet-linked check to the first unlinked transaction in its
-// account whose payee text carries the same check number (and, when the check
-// has an amount, the same amount). Pure — returns new accounts + match count.
+// account whose payee text carries the same check number. Pure — returns new
+// accounts + match count.
 function linkUnmatchedChecks(accounts, checks) {
   const linked = new Set();
   accounts.forEach((a) => (a.transactions || []).forEach((t) => { if (t.checkId) linked.add(t.checkId); }));
@@ -641,13 +640,13 @@ function unlinkCheckElsewhere(accounts, checkId, keepTxId = null) {
   });
 }
 
-function normalizeCheck({ accountId, checkNumber, merchant, amount }) {
-  const amt = parseFloat(amount);
+// No amount on the check itself — the register shows the linked
+// transaction's amount, so there's only one source of truth for it.
+function normalizeCheck({ accountId, checkNumber, merchant }) {
   return {
     accountId,
     checkNumber: String(checkNumber ?? "").trim(),
     merchant:    (merchant || "").trim(),
-    ...(isNaN(amt) ? {} : { amount: Math.abs(amt) }),
   };
 }
 
@@ -661,14 +660,15 @@ export function addCheck(record) {
 }
 
 export function updateCheck(id, record) {
+  const old = getChecks().find((c) => c.id === id);
   const updated = { id, ...normalizeCheck(record) };
   const checks = getChecks().map((c) => (c.id === id ? updated : c));
-  // If the edit means the linked transaction no longer matches (different
-  // account, number or amount), drop the link so auto-match can re-find it.
+  // A changed account or check # means the linked transaction is probably the
+  // wrong one — drop the link so auto-match can re-find it. A merchant-only
+  // edit keeps the link (including one made by hand in the transaction form).
   let accounts = _data.accounts;
-  const linkedAcct = accounts.find((a) => (a.transactions || []).some((t) => t.checkId === id));
-  const linkedTx = linkedAcct?.transactions.find((t) => t.checkId === id);
-  if (linkedTx && (linkedAcct.id !== updated.accountId || !checkMatchesTx(updated, linkedTx))) {
+  if (old && (old.accountId !== updated.accountId ||
+      normCheckNo(old.checkNumber) !== normCheckNo(updated.checkNumber))) {
     accounts = unlinkCheckElsewhere(accounts, id);
   }
   _data = { ..._data, checks, accounts: linkUnmatchedChecks(accounts, checks).accounts };

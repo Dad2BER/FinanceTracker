@@ -1071,7 +1071,8 @@ export function renderSettingsRocRates(container, rocRates) {
 // ── Check Register ─────────────────────────────────────────────────────────
 // Maps check numbers on ledger (checking) accounts to the merchant paid.
 // Transactions link to a row via `tx.checkId` — auto-matched on account +
-// check number (+ amount when given), or set by hand in the transaction form.
+// check number, or set by hand in the transaction form. Amount isn't entered
+// here — the register displays the linked transaction's amount.
 
 function checkSortKey(c) {
   const n = parseInt(c.checkNumber, 10);
@@ -1090,18 +1091,11 @@ function showCheckEditPrompt({ title, ledgers, payees, checks, initial = {}, onS
       <label for="cr-account">Account</label>
       <select id="cr-account" class="form-select">${accountOptions}</select>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label for="cr-number">Check #</label>
-        <input id="cr-number" type="text" inputmode="numeric" class="form-input" placeholder="e.g. 1003"
-          autocomplete="off" value="${escHtml(initial.checkNumber ?? "")}">
-        <span class="field-error" id="cr-number-err"></span>
-      </div>
-      <div class="form-group">
-        <label for="cr-amount">Amount <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <input id="cr-amount" type="number" step="0.01" min="0" class="form-input" placeholder="e.g. 294.02"
-          value="${initial.amount ?? ""}">
-      </div>
+    <div class="form-group">
+      <label for="cr-number">Check #</label>
+      <input id="cr-number" type="text" inputmode="numeric" class="form-input" placeholder="e.g. 1003"
+        autocomplete="off" value="${escHtml(initial.checkNumber ?? "")}">
+      <span class="field-error" id="cr-number-err"></span>
     </div>
     <div class="form-group">
       <label for="cr-merchant">Merchant</label>
@@ -1110,7 +1104,6 @@ function showCheckEditPrompt({ title, ledgers, payees, checks, initial = {}, onS
       <datalist id="cr-merchant-list">${payeeOptions}</datalist>
       <span class="field-error" id="cr-merchant-err"></span>
     </div>
-    <span class="field-hint">When set, Amount must also match for a transaction to be linked automatically.</span>
     <div class="form-actions">
       <button class="btn btn-secondary" id="cr-cancel">Cancel</button>
       <button class="btn btn-primary" id="cr-save">Save</button>
@@ -1122,7 +1115,6 @@ function showCheckEditPrompt({ title, ledgers, payees, checks, initial = {}, onS
     const accountId = el.querySelector("#cr-account").value;
     const checkNumber = numberInput.value.trim();
     const merchant = el.querySelector("#cr-merchant").value.trim();
-    const amount = el.querySelector("#cr-amount").value.trim();
 
     let valid = true;
     el.querySelector("#cr-number-err").textContent = "";
@@ -1142,7 +1134,7 @@ function showCheckEditPrompt({ title, ledgers, payees, checks, initial = {}, onS
     if (!valid) return;
 
     Modal.close();
-    onSave({ accountId, checkNumber, merchant, amount });
+    onSave({ accountId, checkNumber, merchant });
   });
   Modal.open(el);
   setTimeout(() => numberInput.focus(), 50);
@@ -1247,9 +1239,9 @@ export function renderSettingsCheckRegister(container, accounts, checks, payees)
       <td>${escHtml(accountName.get(check.accountId) || "—")}</td>
       <td>${escHtml(check.checkNumber)}</td>
       <td>${escHtml(check.merchant)}</td>
-      <td class="align-right">${check.amount != null ? formatCurrency(check.amount) : '<span class="dim">—</span>'}</td>
+      <td class="align-right">${tx ? formatCurrency(Math.abs(tx.amount)) : '<span class="dim">—</span>'}</td>
       <td>${tx
-        ? `<span class="dim">${escHtml(tx.date)} · ${escHtml(tx.payeeName)} · ${formatCurrency(Math.abs(tx.amount))}</span>`
+        ? `<span class="dim">${escHtml(tx.date)} · ${escHtml(tx.payeeName)}</span>`
         : '<span class="check-unmatched">Not matched</span>'}</td>
       <td class="actions-cell">
         <button class="icon-btn" title="Edit">&#9998;</button>
