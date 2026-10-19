@@ -1,5 +1,6 @@
 import { Modal } from "../ui/modal.js";
-import { addTransaction, updateTransaction, addPayee } from "../../state.js";
+import { addTransaction, updateTransaction, addPayee, getChecks, getAccount } from "../../state.js";
+import { formatCurrency } from "../../utils/currency.js";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -36,6 +37,31 @@ export function showTransactionForm(accountId, categories, payees, tags, transac
     tagOptions += `<option value="${escHtml(currentTag)}">${escHtml(currentTag)} (no longer in list)</option>`;
   }
 
+  // Check register rows for this account that are free to link (not already
+  // linked to some other transaction). Only shown when the account has any.
+  const account = getAccount(accountId);
+  const takenCheckIds = new Set(
+    (account?.transactions || [])
+      .filter((t) => t.checkId && t.id !== transaction?.id)
+      .map((t) => t.checkId)
+  );
+  const accountChecks = getChecks()
+    .filter((c) => c.accountId === accountId && !takenCheckIds.has(c.id))
+    .sort((a, b) => (parseInt(b.checkNumber, 10) || 0) - (parseInt(a.checkNumber, 10) || 0));
+  const currentCheckId = isEdit ? (transaction.checkId || "") : "";
+  const checkOptions = accountChecks
+    .map((c) => `<option value="${escHtml(c.id)}">#${escHtml(c.checkNumber)} — ${escHtml(c.merchant)}${c.amount != null ? ` (${formatCurrency(c.amount)})` : ""}</option>`)
+    .join("");
+  const checkGroupHtml = accountChecks.length === 0 ? "" : `
+    <div class="form-group">
+      <label for="tf-check">Check # <span style="font-weight:400;text-transform:none;letter-spacing:0">(check register)</span></label>
+      <select id="tf-check" class="form-select">
+        <option value="">— Not a check —</option>
+        ${checkOptions}
+      </select>
+      <span class="field-hint">Linked transactions display the check's merchant instead of the payee.</span>
+    </div>`;
+
   el.innerHTML = `
     <h3>${isEdit ? "Edit Transaction" : "Add Transaction"}</h3>
 
@@ -53,6 +79,7 @@ export function showTransactionForm(accountId, categories, payees, tags, transac
       <datalist id="tf-payee-list">${payeeOptions}</datalist>
       <span class="field-error" id="tf-payee-err"></span>
     </div>
+${checkGroupHtml}
 
     <div id="tf-cat-section">
       <!-- populated dynamically -->
@@ -85,6 +112,8 @@ export function showTransactionForm(accountId, categories, payees, tags, transac
   const catSection = el.querySelector("#tf-cat-section");
   const payeeInput = el.querySelector("#tf-payee");
   el.querySelector("#tf-tag").value = currentTag;
+  const checkSel = el.querySelector("#tf-check");
+  if (checkSel) checkSel.value = currentCheckId;
 
   // State for the category section
   let resolvedSubcategoryId = isEdit ? (transaction.subcategoryId || null) : null;
@@ -260,6 +289,8 @@ export function showTransactionForm(accountId, categories, payees, tags, transac
     }
 
     const txData = { date, payeeName, subcategoryId: resolvedSubcategoryId, tag, amount };
+    // Only touch the link when the picker was shown; otherwise leave it as-is.
+    if (checkSel) txData.checkId = checkSel.value || null;
 
     if (isEdit) {
       updateTransaction(accountId, transaction.id, txData);

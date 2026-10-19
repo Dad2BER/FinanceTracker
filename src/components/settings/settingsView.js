@@ -8,13 +8,17 @@ import {
   addTag, updateTag, deleteTag,
   addRocRate, updateRocRate, deleteRocRate,
   getCategories, getPayees, getRocRates, toggleAccountHidden, setAccountInstitution,
+  addCheck, updateCheck, deleteCheck, autoLinkChecks, getChecks, getAccounts,
 } from "../../state.js";
 import { INSTITUTIONS } from "../../constants/institutions.js";
+import { formatCurrency } from "../../utils/currency.js";
 
 // ── Module-level selection state (persists across re-renders) ─────────────────
 let _selectedCategoryId = null;
 let _selectedSubcategoryId = null;
 let _selectedRocYear = null;
+let _checkAccountFilter = "";  // "" = all ledger accounts
+let _checkMatchMsg = "";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -1062,4 +1066,220 @@ export function renderSettingsRocRates(container, rocRates) {
   });
   addRocRow.appendChild(addRocBtn);
   container.appendChild(addRocRow);
+}
+
+// ── Check Register ─────────────────────────────────────────────────────────
+// Maps check numbers on ledger (checking) accounts to the merchant paid.
+// Transactions link to a row via `tx.checkId` — auto-matched on account +
+// check number (+ amount when given), or set by hand in the transaction form.
+
+function checkSortKey(c) {
+  const n = parseInt(c.checkNumber, 10);
+  return isNaN(n) ? Number.MAX_SAFE_INTEGER : n;
+}
+
+function showCheckEditPrompt({ title, ledgers, payees, checks, initial = {}, onSave }) {
+  const el = document.createElement("div");
+  const accountOptions = ledgers
+    .map((a) => `<option value="${escHtml(a.id)}" ${a.id === initial.accountId ? "selected" : ""}>${escHtml(a.name)}</option>`)
+    .join("");
+  const payeeOptions = payees.map((p) => `<option value="${escHtml(p.name)}">`).join("");
+  el.innerHTML = `
+    <h3>${escHtml(title)}</h3>
+    <div class="form-group">
+      <label for="cr-account">Account</label>
+      <select id="cr-account" class="form-select">${accountOptions}</select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="cr-number">Check #</label>
+        <input id="cr-number" type="text" inputmode="numeric" class="form-input" placeholder="e.g. 1003"
+          autocomplete="off" value="${escHtml(initial.checkNumber ?? "")}">
+        <span class="field-error" id="cr-number-err"></span>
+      </div>
+      <div class="form-group">
+        <label for="cr-amount">Amount <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input id="cr-amount" type="number" step="0.01" min="0" class="form-input" placeholder="e.g. 294.02"
+          value="${initial.amount ?? ""}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="cr-merchant">Merchant</label>
+      <input id="cr-merchant" type="text" class="form-input" list="cr-merchant-list" maxlength="100"
+        placeholder="Who the check was written to" autocomplete="off" value="${escHtml(initial.merchant ?? "")}">
+      <datalist id="cr-merchant-list">${payeeOptions}</datalist>
+      <span class="field-error" id="cr-merchant-err"></span>
+    </div>
+    <span class="field-hint">When set, Amount must also match for a transaction to be linked automatically.</span>
+    <div class="form-actions">
+      <button class="btn btn-secondary" id="cr-cancel">Cancel</button>
+      <button class="btn btn-primary" id="cr-save">Save</button>
+    </div>
+  `;
+  const numberInput = el.querySelector("#cr-number");
+  el.querySelector("#cr-cancel").addEventListener("click", () => Modal.close());
+  el.querySelector("#cr-save").addEventListener("click", () => {
+    const accountId = el.querySelector("#cr-account").value;
+    const checkNumber = numberInput.value.trim();
+    const merchant = el.querySelector("#cr-merchant").value.trim();
+    const amount = el.querySelector("#cr-amount").value.trim();
+
+    let valid = true;
+    el.querySelector("#cr-number-err").textContent = "";
+    el.querySelector("#cr-merchant-err").textContent = "";
+    if (!checkNumber) {
+      el.querySelector("#cr-number-err").textContent = "Check # is required.";
+      valid = false;
+    } else if (checks.some((c) => c.id !== initial.id && c.accountId === accountId &&
+        c.checkNumber.replace(/^0+(?=\d)/, "") === checkNumber.replace(/^0+(?=\d)/, ""))) {
+      el.querySelector("#cr-number-err").textContent = "This account already has that check #.";
+      valid = false;
+    }
+    if (!merchant) {
+      el.querySelector("#cr-merchant-err").textContent = "Merchant is required.";
+      valid = false;
+    }
+    if (!valid) return;
+
+    Modal.close();
+    onSave({ accountId, checkNumber, merchant, amount });
+  });
+  Modal.open(el);
+  setTimeout(() => numberInput.focus(), 50);
+}
+
+export function renderSettingsCheckRegister(container, accounts, checks, payees) {
+  const ledgers = accounts
+    .filter((a) => a.accountType === "ledger")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (_checkAccountFilter && !ledgers.some((a) => a.id === _checkAccountFilter)) _checkAccountFilter = "";
+
+  container.innerHTML = "";
+  renderPageHeader(container, "Check Register");
+
+  if (ledgers.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "dim";
+    empty.style.cssText = "font-size:0.88rem;padding:1rem 0;";
+    empty.textContent = "Add a ledger (checking) account first — checks are recorded per ledger account.";
+    container.appendChild(empty);
+    return;
+  }
+
+  // checkId → linked transaction (for the "Matched Transaction" column)
+  const linkedTx = new Map();
+  ledgers.forEach((a) => (a.transactions || []).forEach((t) => { if (t.checkId) linkedTx.set(t.checkId, t); }));
+  const accountName = new Map(accounts.map((a) => [a.id, a.name]));
+
+  // ── Toolbar ──────────────────────────────────────────────────────────────
+  const toolbar = document.createElement("div");
+  toolbar.className = "settings-toolbar";
+  toolbar.innerHTML = `
+    <select class="form-select settings-cat-select" id="cr-filter">
+      <option value="">All ledger accounts</option>
+      ${ledgers.map((a) => `<option value="${escHtml(a.id)}" ${a.id === _checkAccountFilter ? "selected" : ""}>${escHtml(a.name)}</option>`).join("")}
+    </select>
+    <button class="btn btn-primary btn-sm" id="cr-add-btn">+ Add Check</button>
+    <button class="btn btn-secondary btn-sm" id="cr-match-btn"
+      title="Link unmatched checks to transactions whose payee is the check number">&#8635; Match Transactions</button>
+    <span class="settings-api-saved" id="cr-match-msg">${escHtml(_checkMatchMsg)}</span>
+  `;
+  container.appendChild(toolbar);
+  _checkMatchMsg = "";
+
+  toolbar.querySelector("#cr-filter").addEventListener("change", (e) => {
+    _checkAccountFilter = e.target.value;
+    renderSettingsCheckRegister(container, getAccounts(), getChecks(), getPayees());
+  });
+  toolbar.querySelector("#cr-add-btn").addEventListener("click", () => {
+    showCheckEditPrompt({
+      title: "Add Check",
+      ledgers, payees, checks,
+      initial: { accountId: _checkAccountFilter || ledgers[0].id },
+      onSave: (rec) => addCheck(rec),
+    });
+  });
+  toolbar.querySelector("#cr-match-btn").addEventListener("click", () => {
+    const n = autoLinkChecks();
+    _checkMatchMsg = n === 0 ? "No new matches found." : `Linked ${n} transaction${n === 1 ? "" : "s"}.`;
+    renderSettingsCheckRegister(container, getAccounts(), getChecks(), getPayees());
+  });
+
+  // ── Table ────────────────────────────────────────────────────────────────
+  const visible = checks
+    .filter((c) => !_checkAccountFilter || c.accountId === _checkAccountFilter)
+    .sort((a, b) =>
+      (accountName.get(a.accountId) || "").localeCompare(accountName.get(b.accountId) || "") ||
+      checkSortKey(b) - checkSortKey(a));
+
+  if (visible.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "dim";
+    empty.style.cssText = "font-size:0.88rem;padding:0.5rem 0;";
+    empty.textContent = "No checks recorded yet. Add one above.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-wrapper";
+  wrapper.innerHTML = `
+    <table class="holdings-table check-register-table">
+      <thead>
+        <tr>
+          <th>Account</th>
+          <th>Check #</th>
+          <th>Merchant</th>
+          <th class="align-right">Amount</th>
+          <th>Matched Transaction</th>
+          <th class="actions-cell"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  `;
+  const tbody = wrapper.querySelector("tbody");
+
+  visible.forEach((check) => {
+    const tx = linkedTx.get(check.id);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escHtml(accountName.get(check.accountId) || "—")}</td>
+      <td>${escHtml(check.checkNumber)}</td>
+      <td>${escHtml(check.merchant)}</td>
+      <td class="align-right">${check.amount != null ? formatCurrency(check.amount) : '<span class="dim">—</span>'}</td>
+      <td>${tx
+        ? `<span class="dim">${escHtml(tx.date)} · ${escHtml(tx.payeeName)} · ${formatCurrency(Math.abs(tx.amount))}</span>`
+        : '<span class="check-unmatched">Not matched</span>'}</td>
+      <td class="actions-cell">
+        <button class="icon-btn" title="Edit">&#9998;</button>
+        <button class="icon-btn icon-btn-danger" title="Delete">&#128465;</button>
+      </td>
+    `;
+    const [editBtn, delBtn] = tr.querySelectorAll("button");
+    editBtn.addEventListener("click", () => {
+      showCheckEditPrompt({
+        title: "Edit Check",
+        ledgers, payees, checks,
+        initial: check,
+        onSave: (rec) => updateCheck(check.id, rec),
+      });
+    });
+    delBtn.addEventListener("click", () => {
+      showConfirmDialog({
+        title: "Delete Check",
+        message: `Delete check #${check.checkNumber} (${check.merchant})?${tx ? " Its transaction will show the bank's payee text again." : ""}`,
+        onConfirm: () => deleteCheck(check.id),
+      });
+    });
+    tbody.appendChild(tr);
+  });
+
+  container.appendChild(wrapper);
+
+  const hint = document.createElement("p");
+  hint.className = "dim";
+  hint.style.cssText = "font-size:0.8rem;margin-top:0.75rem;";
+  hint.textContent = "Checks are matched to transactions in the same account whose payee is the check number (e.g. \"Check 1003\", \"Draft 3047\", \"3055\"). Linked transactions show the Merchant in ledgers and reports. You can also link a check by hand from the transaction's Edit form.";
+  container.appendChild(hint);
 }

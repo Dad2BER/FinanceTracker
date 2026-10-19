@@ -72,6 +72,7 @@ settings
   ├── settings-database    (Database backup/restore)
   ├── settings-categories  (Categories & Payees)
   ├── settings-tags        (Tags)
+  ├── settings-checks      (Check Register)
   └── settings-roc         (Return of Capital)
 ```
 
@@ -99,6 +100,8 @@ addTag / updateTag / deleteTag  // no-op on the protected "Cap. Ex." tag
 getDividendIncome() / addDividendIncome / updateDividendIncome / deleteDividendIncome
 addDividendIncomeBatch(records)  // used by the CSV importer — one save for the whole file
 getRocRates() / addRocRate(year, symbol, pct) / updateRocRate(id, symbol, pct) / deleteRocRate(id)
+getChecks() / addCheck(rec) / updateCheck(id, rec) / deleteCheck(id) / autoLinkChecks()
+resolvePayeeName(tx) / getCheckForTransaction(tx)  // merchant for check-linked transactions
 recordAccountValue(accountId, date, value)
 updateHoldingDividend(accountId, holdingId, dividendPerShare)  // lightweight; used by startup fetch
 updateDividendBySymbol(symbol, dividendPerShare, dividendReinvested)  // updates all holdings of a symbol
@@ -203,6 +206,7 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
   categoryId: string,     // optional — resolved from subcategoryId at write time
   tag: string,             // optional — free-text value, but UI only offers names from getTags()
   excluded: boolean,       // optional — excluded from budget/spend reports
+  checkId: string,         // optional — links to a Check register row (see below)
 }
 ```
 
@@ -216,6 +220,21 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
 ```
 - Tags are a managed pick-list (Settings → Tags), but a transaction's `tag` is still stored as a plain string, not a tag id — deleting a tag does not touch transactions that already used its name.
 - Every profile is seeded with one non-deletable, non-renamable tag: **"Cap. Ex."** (`protected: true`), both on profile creation and via a one-time migration for existing profiles in `server.py`.
+
+### Check (`Settings → Check Register`)
+```js
+{
+  id: string,
+  accountId: string,    // a ledger (checking) account
+  checkNumber: string,
+  merchant: string,     // who the check was actually written to
+  amount: number,       // optional, stored positive; when set it must match |tx.amount| to auto-link
+}
+```
+- The link lives on the transaction (`tx.checkId`), not the check; one check ↔ at most one transaction. The bank's raw `payeeName` ("Check 1003", "Draft 3047", "3055") is never overwritten.
+- Display/grouping code must use `resolvePayeeName(tx)` (merchant when linked, else `payeeName`) — used by the ledger transaction list, the combined Ledgers view, and Subcategory Spend. Raw `payeeName` is still used for import dedup and payee→category matching.
+- Auto-link (`linkUnmatchedChecks` in `state.js`) runs on addCheck/updateCheck, addTransaction, and addTransactionsBatch (CSV import), plus the "Match Transactions" button: matches same account + check # parsed from payee by `extractCheckNumber` (leading zeros ignored) + amount if set. Users can also link/unlink by hand via the "Check #" picker in the transaction form (only shown when the account has check rows).
+- SQLite: `check_register` table; `transactions.check_id` column.
 
 ### DividendIncome
 ```js

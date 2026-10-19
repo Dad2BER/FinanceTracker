@@ -1,4 +1,4 @@
-import { deleteTransaction, deleteAccount, toggleTransactionExcluded } from "../../state.js";
+import { deleteTransaction, deleteAccount, toggleTransactionExcluded, getCheckForTransaction } from "../../state.js";
 import { showConfirmDialog } from "../ui/confirmDialog.js";
 import { showTransactionForm } from "./transactionForm.js";
 import { showImportModal } from "./transactionImport.js";
@@ -32,6 +32,14 @@ function formatAmount(amount) {
   const abs = Math.abs(amount);
   const str = formatCurrency(abs);
   return amount >= 0 ? str : `-${str}`;
+}
+
+// Payee cell: a check-register merchant (with its check # alongside) when the
+// transaction is linked to a check, otherwise the bank's payee text.
+function payeeCellHtml(tx) {
+  const check = getCheckForTransaction(tx);
+  if (!check) return escHtml(tx.payeeName);
+  return `${escHtml(check.merchant)}<span class="check-ref" title="Bank payee: ${escHtml(tx.payeeName)}">Check #${escHtml(check.checkNumber)}</span>`;
 }
 
 function escHtml(str) {
@@ -151,7 +159,7 @@ export function renderTransactionList(container, account, categories, payees, ta
 
     tr.innerHTML = `
       <td>${escHtml(tx.date)}</td>
-      <td>${escHtml(tx.payeeName)}</td>
+      <td>${payeeCellHtml(tx)}</td>
       <td class="dim">${escHtml(categoryName)}</td>
       <td class="dim">${escHtml(subcategoryName)}</td>
       <td class="dim">${escHtml(tx.tag || "")}</td>
@@ -174,7 +182,7 @@ export function renderTransactionList(container, account, categories, payees, ta
     deleteBtn.addEventListener("click", () =>
       showConfirmDialog({
         title: "Delete Transaction",
-        message: `Delete the transaction "${tx.payeeName}" for ${formatAmount(tx.amount)}?`,
+        message: `Delete the transaction "${getCheckForTransaction(tx)?.merchant || tx.payeeName}" for ${formatAmount(tx.amount)}?`,
         onConfirm: () => deleteTransaction(account.id, tx.id),
       })
     );

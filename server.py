@@ -91,7 +91,8 @@ def init_db():
             subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL,
             tag            TEXT,
             amount         REAL NOT NULL,
-            excluded       INTEGER NOT NULL DEFAULT 0
+            excluded       INTEGER NOT NULL DEFAULT 0,
+            check_id       TEXT
         );
         CREATE TABLE IF NOT EXISTS account_value_history (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,6 +117,14 @@ def init_db():
             per_share_roc    REAL NOT NULL DEFAULT 0,
             per_share_income REAL NOT NULL DEFAULT 0,
             institution      TEXT
+        );
+        CREATE TABLE IF NOT EXISTS check_register (
+            id           TEXT PRIMARY KEY,
+            profile_id   TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+            account_id   TEXT,
+            check_number TEXT NOT NULL,
+            merchant     TEXT NOT NULL,
+            amount       REAL
         );
         CREATE TABLE IF NOT EXISTS roc_rates (
             id         TEXT PRIMARY KEY,
@@ -159,6 +168,14 @@ def init_db():
     # Add excluded column to transactions (persists the exclude-from-budget flag)
     try:
         con.execute("ALTER TABLE transactions ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    # Add check_id to transactions (links a checking-account transaction to a
+    # check_register row so its merchant can be shown instead of the check #)
+    try:
+        con.execute("ALTER TABLE transactions ADD COLUMN check_id TEXT")
         con.commit()
     except sqlite3.OperationalError:
         pass  # Column already exists
@@ -331,6 +348,8 @@ def load_state(profile_id):
                 tx["tag"] = t["tag"]
             if t["excluded"]:
                 tx["excluded"] = True
+            if t["check_id"]:
+                tx["checkId"] = t["check_id"]
             transactions.append(tx)
 
         history_rows = con.execute(
@@ -431,6 +450,23 @@ def load_state(profile_id):
         for r in roc_rows
     ]
 
+    # ── Check Register ────────────────────────────────────────────────────────
+    check_rows = con.execute(
+        "SELECT * FROM check_register WHERE profile_id = ? ORDER BY account_id, check_number",
+        (profile_id,)
+    ).fetchall()
+    checks = []
+    for c in check_rows:
+        check = {
+            "id":          c["id"],
+            "accountId":   c["account_id"],
+            "checkNumber": c["check_number"],
+            "merchant":    c["merchant"],
+        }
+        if c["amount"] is not None:
+            check["amount"] = c["amount"]
+        checks.append(check)
+
     # ── Profile Settings (retirement inputs, etc.) ────────────────────────────
     settings_row = con.execute(
         "SELECT settings_json FROM profile_settings WHERE profile_id = ?",
@@ -451,6 +487,7 @@ def load_state(profile_id):
         "tags":             tags,
         "dividendIncome":   dividend_income,
         "rocRates":         roc_rates,
+        "checks":           checks,
         "retirementInputs": ret_inputs,
     }
 
@@ -462,6 +499,7 @@ def save_state(data, profile_id):
     tags            = data.get("tags",            [])
     dividend_income = data.get("dividendIncome",  [])
     roc_rates       = data.get("rocRates",        [])
+    checks          = data.get("checks",          [])
 
     con = sqlite3.connect(DB_PATH)
     con.execute("PRAGMA foreign_keys=ON")
@@ -491,6 +529,7 @@ def save_state(data, profile_id):
             con.execute("DELETE FROM categories      WHERE profile_id = ?", (profile_id,))
             con.execute("DELETE FROM dividend_income WHERE profile_id = ?", (profile_id,))
             con.execute("DELETE FROM roc_rates       WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM check_register  WHERE profile_id = ?", (profile_id,))
             con.execute("DELETE FROM accounts        WHERE profile_id = ?", (profile_id,))
 
             # ── Categories + Subcategories ─────────────────────────────────────
@@ -558,8 +597,8 @@ def save_state(data, profile_id):
                 for t in acc.get("transactions", []):
                     con.execute(
                         "INSERT INTO transactions "
-                        "(id, account_id, date, payee_name, subcategory_id, tag, amount, excluded) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        "(id, account_id, date, payee_name, subcategory_id, tag, amount, excluded, check_id) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             t["id"],
                             acc["id"],
@@ -569,6 +608,7 @@ def save_state(data, profile_id):
                             t.get("tag") or None,
                             t["amount"],
                             1 if t.get("excluded") else 0,
+                            t.get("checkId") or None,
                         )
                     )
                 for vh in acc.get("valueHistory", []):
@@ -604,6 +644,21 @@ def save_state(data, profile_id):
                 con.execute(
                     "INSERT INTO roc_rates (id, profile_id, year, symbol, pct) VALUES (?, ?, ?, ?, ?)",
                     (r["id"], profile_id, r["year"], r["symbol"], r.get("pct", 0) or 0)
+                )
+
+            # ── Check Register ──────────────────────────────────────────────────
+            for c in checks:
+                con.execute(
+                    "INSERT INTO check_register (id, profile_id, account_id, check_number, merchant, amount) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        c["id"],
+                        profile_id,
+                        c.get("accountId"),
+                        str(c["checkNumber"]),
+                        c["merchant"],
+                        c.get("amount"),
+                    )
                 )
 
             # ── Profile Settings ────────────────────────────────────────────────
@@ -682,9 +737,10 @@ def delete_profile(profile_id):
                 ph = ",".join("?" * len(cat_ids))
                 con.execute(f"DELETE FROM subcategories WHERE category_id IN ({ph})", cat_ids)
 
-            con.execute("DELETE FROM categories WHERE profile_id = ?", (profile_id,))
-            con.execute("DELETE FROM accounts   WHERE profile_id = ?", (profile_id,))
-            con.execute("DELETE FROM profiles   WHERE id = ?", (profile_id,))
+            con.execute("DELETE FROM categories     WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM check_register WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM accounts       WHERE profile_id = ?", (profile_id,))
+            con.execute("DELETE FROM profiles       WHERE id = ?", (profile_id,))
     finally:
         con.close()
 

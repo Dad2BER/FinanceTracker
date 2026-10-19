@@ -17,6 +17,7 @@ export function initState(data, profileId) {
     tags:              Array.isArray(data?.tags)       ? data.tags       : [],
     dividendIncome:    Array.isArray(data?.dividendIncome) ? data.dividendIncome : [],
     rocRates:          Array.isArray(data?.rocRates)    ? data.rocRates   : [],
+    checks:            Array.isArray(data?.checks)      ? data.checks     : [],
     retirementInputs:  data?.retirementInputs  ?? null,
     budgetEstInputs:   data?.budgetEstInputs   ?? null,
   };
@@ -339,7 +340,7 @@ export function applyHoldingsImport(accountId, { updates = [], deletes = [], add
 
 // ── Transaction CRUD ──────────────────────────────────────────────────────────
 
-export function addTransaction(accountId, { date, payeeName, subcategoryId, tag, amount }) {
+export function addTransaction(accountId, { date, payeeName, subcategoryId, tag, amount, checkId }) {
   const tx = {
     id: generateId(),
     date,
@@ -347,6 +348,7 @@ export function addTransaction(accountId, { date, payeeName, subcategoryId, tag,
     amount: parseFloat(amount),
     ...(subcategoryId ? { subcategoryId } : {}),
     ...(tag ? { tag } : {}),
+    ...(checkId ? { checkId } : {}),
   };
   // Resolve categoryId from subcategoryId
   if (subcategoryId) {
@@ -355,20 +357,22 @@ export function addTransaction(accountId, { date, payeeName, subcategoryId, tag,
     );
     if (cat) tx.categoryId = cat.id;
   }
-  _data = {
-    ..._data,
-    accounts: _data.accounts.map((a) =>
-      a.id === accountId
-        ? { ...a, transactions: [...(a.transactions || []), tx] }
-        : a
-    ),
-  };
+  let accounts = _data.accounts.map((a) =>
+    a.id === accountId
+      ? { ...a, transactions: [...(a.transactions || []), tx] }
+      : a
+  );
+  if (checkId) accounts = unlinkCheckElsewhere(accounts, checkId, tx.id);
+  _data = { ..._data, accounts: linkUnmatchedChecks(accounts, _data.checks).accounts };
   saveData(_data, _profileId);
   notify();
   return tx;
 }
 
-export function updateTransaction(accountId, txId, { date, payeeName, subcategoryId, tag, amount }) {
+// `checkId`: undefined leaves the transaction's check link untouched, null/""
+// unlinks it, and an id links it (moving the link off any other transaction —
+// a check-register row maps to at most one transaction).
+export function updateTransaction(accountId, txId, { date, payeeName, subcategoryId, tag, amount, checkId }) {
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) => {
@@ -395,11 +399,15 @@ export function updateTransaction(accountId, txId, { date, payeeName, subcategor
             delete updated.categoryId;
           }
           if (tag) updated.tag = tag; else delete updated.tag;
+          if (checkId !== undefined) {
+            if (checkId) updated.checkId = checkId; else delete updated.checkId;
+          }
           return updated;
         }),
       };
     }),
   };
+  if (checkId) _data = { ..._data, accounts: unlinkCheckElsewhere(_data.accounts, checkId, txId) };
   saveData(_data, _profileId);
   notify();
 }
@@ -422,14 +430,12 @@ export function addTransactionsBatch(accountId, txDataArray) {
     }
     return tx;
   });
-  _data = {
-    ..._data,
-    accounts: _data.accounts.map((a) =>
-      a.id === accountId
-        ? { ...a, transactions: [...(a.transactions || []), ...newTxs] }
-        : a
-    ),
-  };
+  const accounts = _data.accounts.map((a) =>
+    a.id === accountId
+      ? { ...a, transactions: [...(a.transactions || []), ...newTxs] }
+      : a
+  );
+  _data = { ..._data, accounts: linkUnmatchedChecks(accounts, _data.checks).accounts };
   saveData(_data, _profileId);
   notify();
   return newTxs;
@@ -564,6 +570,148 @@ export function deleteRocRate(id) {
   };
   saveData(_data, _profileId);
   notify();
+}
+
+// ── Check Register ─────────────────────────────────────────────────────────
+// Maps a checking account's check numbers to the merchant actually paid. The
+// link lives on the transaction (`tx.checkId` → check.id) so the bank's raw
+// payee text ("Check 1003", "Draft 3047", "3055") is kept as-is, and display /
+// grouping code swaps in the merchant via resolvePayeeName().
+
+export function getChecks() {
+  return _data.checks || [];
+}
+
+function normCheckNo(n) {
+  return String(n ?? "").trim().replace(/^0+(?=\d)/, "");
+}
+
+// Pulls a check number out of a bank's payee text — "Check 1003", "CHK #1003",
+// "Draft 3047", or a bare "3055". Returns null for anything else.
+export function extractCheckNumber(payeeName) {
+  const m = /^\s*(?:check|chk|ck|draft)?\s*(?:no\.?|#)?\s*(\d{3,})\s*$/i.exec(payeeName || "");
+  return m ? normCheckNo(m[1]) : null;
+}
+
+function checkMatchesTx(check, tx) {
+  if (extractCheckNumber(tx.payeeName) !== normCheckNo(check.checkNumber)) return false;
+  return check.amount == null || Math.abs(Math.abs(tx.amount) - check.amount) < 0.005;
+}
+
+// Links every not-yet-linked check to the first unlinked transaction in its
+// account whose payee text carries the same check number (and, when the check
+// has an amount, the same amount). Pure — returns new accounts + match count.
+function linkUnmatchedChecks(accounts, checks) {
+  const linked = new Set();
+  accounts.forEach((a) => (a.transactions || []).forEach((t) => { if (t.checkId) linked.add(t.checkId); }));
+  const pending = (checks || []).filter((c) => !linked.has(c.id));
+  if (pending.length === 0) return { accounts, count: 0 };
+
+  let count = 0;
+  const next = accounts.map((a) => {
+    const mine = pending.filter((c) => c.accountId === a.id);
+    if (mine.length === 0 || !a.transactions?.length) return a;
+    let changed = false;
+    const transactions = a.transactions.map((t) => {
+      if (t.checkId || mine.length === 0) return t;
+      const idx = mine.findIndex((c) => checkMatchesTx(c, t));
+      if (idx < 0) return t;
+      const [check] = mine.splice(idx, 1);
+      changed = true;
+      count++;
+      return { ...t, checkId: check.id };
+    });
+    return changed ? { ...a, transactions } : a;
+  });
+  return { accounts: next, count };
+}
+
+// Clears `checkId` from every transaction except `keepTxId`.
+function unlinkCheckElsewhere(accounts, checkId, keepTxId = null) {
+  return accounts.map((a) => {
+    if (!(a.transactions || []).some((t) => t.checkId === checkId && t.id !== keepTxId)) return a;
+    return {
+      ...a,
+      transactions: a.transactions.map((t) => {
+        if (t.checkId !== checkId || t.id === keepTxId) return t;
+        const { checkId: _drop, ...rest } = t;
+        return rest;
+      }),
+    };
+  });
+}
+
+function normalizeCheck({ accountId, checkNumber, merchant, amount }) {
+  const amt = parseFloat(amount);
+  return {
+    accountId,
+    checkNumber: String(checkNumber ?? "").trim(),
+    merchant:    (merchant || "").trim(),
+    ...(isNaN(amt) ? {} : { amount: Math.abs(amt) }),
+  };
+}
+
+export function addCheck(record) {
+  const check = { id: generateId(), ...normalizeCheck(record) };
+  const checks = [...getChecks(), check];
+  _data = { ..._data, checks, accounts: linkUnmatchedChecks(_data.accounts, checks).accounts };
+  saveData(_data, _profileId);
+  notify();
+  return check;
+}
+
+export function updateCheck(id, record) {
+  const updated = { id, ...normalizeCheck(record) };
+  const checks = getChecks().map((c) => (c.id === id ? updated : c));
+  // If the edit means the linked transaction no longer matches (different
+  // account, number or amount), drop the link so auto-match can re-find it.
+  let accounts = _data.accounts;
+  const linkedAcct = accounts.find((a) => (a.transactions || []).some((t) => t.checkId === id));
+  const linkedTx = linkedAcct?.transactions.find((t) => t.checkId === id);
+  if (linkedTx && (linkedAcct.id !== updated.accountId || !checkMatchesTx(updated, linkedTx))) {
+    accounts = unlinkCheckElsewhere(accounts, id);
+  }
+  _data = { ..._data, checks, accounts: linkUnmatchedChecks(accounts, checks).accounts };
+  saveData(_data, _profileId);
+  notify();
+}
+
+export function deleteCheck(id) {
+  _data = {
+    ..._data,
+    checks: getChecks().filter((c) => c.id !== id),
+    accounts: unlinkCheckElsewhere(_data.accounts, id),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
+// Re-runs auto-matching across every account; returns how many were linked.
+export function autoLinkChecks() {
+  const { accounts, count } = linkUnmatchedChecks(_data.accounts, _data.checks);
+  if (count > 0) {
+    _data = { ..._data, accounts };
+    saveData(_data, _profileId);
+  }
+  notify();
+  return count;
+}
+
+let _checkMapSrc = null;
+let _checkMap = new Map();
+export function getCheckForTransaction(tx) {
+  if (!tx?.checkId) return null;
+  if (_checkMapSrc !== _data.checks) {
+    _checkMapSrc = _data.checks;
+    _checkMap = new Map(getChecks().map((c) => [c.id, c]));
+  }
+  return _checkMap.get(tx.checkId) || null;
+}
+
+// The human-readable payee for a transaction: the check register's merchant
+// when the transaction is linked to a check, otherwise the bank's payee text.
+export function resolvePayeeName(tx) {
+  return getCheckForTransaction(tx)?.merchant || tx?.payeeName || "";
 }
 
 // ── Category Getters ──────────────────────────────────────────────────────────

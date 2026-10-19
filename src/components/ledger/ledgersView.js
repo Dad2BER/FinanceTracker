@@ -1,4 +1,5 @@
 import { formatCurrency } from "../../utils/currency.js";
+import { getCheckForTransaction } from "../../state.js";
 import { attachTableFilter } from "../../utils/tableFilter.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ export function renderLedgersView(container, accounts, categories) {
         ledger: acct.name,
         date: tx.date || "",
         payee: tx.payeeName || "",
+        check: getCheckForTransaction(tx),
         category: categoryName,
         subcategory: subcategoryName,
         tag: tx.tag || "",
@@ -101,7 +103,9 @@ export function renderLedgersView(container, accounts, categories) {
     tr.innerHTML = `
       <td>${escHtml(row.ledger)}</td>
       <td>${escHtml(row.date)}</td>
-      <td>${escHtml(row.payee)}</td>
+      <td>${row.check
+        ? `${escHtml(row.check.merchant)}<span class="check-ref" title="Bank payee: ${escHtml(row.payee)}">Check #${escHtml(row.check.checkNumber)}</span>`
+        : escHtml(row.payee)}</td>
       <td class="dim">${escHtml(row.category)}</td>
       <td class="dim">${escHtml(row.subcategory)}</td>
       <td class="dim">${escHtml(row.tag)}</td>

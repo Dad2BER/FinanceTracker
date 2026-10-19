@@ -1,4 +1,5 @@
 import { formatCurrency } from "../../utils/currency.js";
+import { resolvePayeeName } from "../../state.js";
 
 const PALETTE = [
   "#6366f1", "#f28e2c", "#e15759", "#59a14f", "#76b7b2",
@@ -213,11 +214,11 @@ export function renderSubcatSpendView(container, accounts, categories, onBack, p
       if (month.length !== 7 || month < startMonthStr || month > currentMonthStr) return;
       const label = isAllMode
         ? (subcatNameMap.get(tx.subcategoryId) || "Uncategorized")
-        : normaliseName(tx.payeeName);
+        : normaliseName(resolvePayeeName(tx));
       txs.push({ month, amount: Math.abs(tx.amount), label });
       rawTxs.push({
         account:     acct.name,
-        payee:       normaliseName(tx.payeeName || tx.payee || ""),
+        payee:       normaliseName(resolvePayeeName(tx) || tx.payee || ""),
         date:        tx.date || "",
         category:    selCat?.name || "",
         subcategory: subcatNameMap.get(tx.subcategoryId) || "Uncategorized",
