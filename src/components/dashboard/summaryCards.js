@@ -44,14 +44,42 @@ function buildSlices(map, metaMap) {
 }
 
 function fmtValue(v) {
+  if (v < 0) return "-" + fmtValue(-v);
   if (v >= 1_000_000) return "$" + (v / 1_000_000).toFixed(1) + "M";
   if (v >= 1_000)     return "$" + Math.round(v / 1_000) + "K";
   return "$" + Math.round(v);
 }
 
+// Center label for the donuts: the total they show leaves out the Cash Buffer.
+function centerLabel(cashBuffer) {
+  return cashBuffer !== 0 ? "EX. BUFFER" : "TOTAL";
+}
+
+// Legend row for the Cash Buffer. It has no slice in the pie and no percentage,
+// so it gets a hollow dot and "excl." where the percentage would be.
+function makeCashBufferRow(cashBuffer) {
+  const row = document.createElement("div");
+  row.className = "legend-item legend-item-buffer";
+  row.title = "Cash in Taxable accounts. Excluded from the chart and percentages.";
+
+  const dot = document.createElement("span");
+  dot.className = "legend-dot legend-dot-hollow";
+
+  const lbl = document.createElement("span");
+  lbl.className = "legend-label";
+  lbl.textContent = `Cash Buffer (${fmtValue(cashBuffer)})`;
+
+  const note = document.createElement("span");
+  note.className = "legend-buffer-note";
+  note.textContent = "excl.";
+
+  row.append(dot, lbl, note);
+  return row;
+}
+
 // ── Standard pie card (Tax Type) ─────────────────────────────────────────────
 
-function makeCard(slices, total, isLoading) {
+function makeCard(slices, total, isLoading, cashBuffer = 0) {
   const card = document.createElement("div");
   card.className = "summary-card";
 
@@ -68,7 +96,7 @@ function makeCard(slices, total, isLoading) {
 
   const wrap = document.createElement("div");
   wrap.className = "pie-chart-wrap";
-  wrap.appendChild(createPieChart(slices, total));
+  wrap.appendChild(createPieChart(slices, total, centerLabel(cashBuffer)));
 
   const legend = document.createElement("div");
   legend.className = "pie-legend";
@@ -83,6 +111,7 @@ function makeCard(slices, total, isLoading) {
     `;
     legend.appendChild(item);
   });
+  if (cashBuffer !== 0) legend.appendChild(makeCashBufferRow(cashBuffer));
 
   wrap.appendChild(legend);
   card.appendChild(wrap);
@@ -91,7 +120,7 @@ function makeCard(slices, total, isLoading) {
 
 // ── Allocation card (Asset Type) with target % editing ───────────────────────
 
-function makeAllocationCard(slices, total, isLoading) {
+function makeAllocationCard(slices, total, isLoading, cashBuffer = 0) {
   const card = document.createElement("div");
   card.className = "summary-card";
 
@@ -111,7 +140,7 @@ function makeAllocationCard(slices, total, isLoading) {
 
   const wrap = document.createElement("div");
   wrap.className = "pie-chart-wrap";
-  wrap.appendChild(createPieChart(slices, total));
+  wrap.appendChild(createPieChart(slices, total, centerLabel(cashBuffer)));
 
   const rightSide = document.createElement("div");
   rightSide.className = "pie-legend-col";
@@ -173,6 +202,7 @@ function makeAllocationCard(slices, total, isLoading) {
 
       legend.appendChild(row);
     });
+    if (cashBuffer !== 0) legend.appendChild(makeCashBufferRow(cashBuffer));
   }
 
   editBtn.addEventListener("click", () => {
@@ -260,13 +290,21 @@ export function renderSummaryCards(container, accounts, prices, pricesLoading) {
   const byAsset = {};
   const byTax = {};
   let total = 0;
+  // Cash in Taxable accounts is the Cash Buffer: shown on its own and kept out
+  // of the slices, the total and therefore every percentage.
+  let cashBuffer = 0;
 
   if (!isLoading) {
     for (const account of accounts) {
+      const isTaxable = account.taxType === "Taxable";
       if (account.accountType === "ledger") {
         const balance = (account.openingBalance || 0) +
           (account.transactions || []).reduce((sum, t) => sum + t.amount, 0);
         if (balance === 0) continue;
+        if (isTaxable) {
+          cashBuffer += balance;
+          continue;
+        }
         byAsset["cash"] = (byAsset["cash"] || 0) + balance;
         byTax[account.taxType] = (byTax[account.taxType] || 0) + balance;
         total += balance;
@@ -274,6 +312,10 @@ export function renderSummaryCards(container, accounts, prices, pricesLoading) {
         for (const holding of account.holdings) {
           const val = holdingValue(holding, prices);
           if (val === null) continue;
+          if (isTaxable && holding.assetType === "cash") {
+            cashBuffer += val;
+            continue;
+          }
           const assetKey = holding.assetType || "other";
           byAsset[assetKey] = (byAsset[assetKey] || 0) + val;
           byTax[account.taxType] = (byTax[account.taxType] || 0) + val;
@@ -289,8 +331,8 @@ export function renderSummaryCards(container, accounts, prices, pricesLoading) {
   const grid = document.createElement("div");
   grid.className = "dashboard-grid";
 
-  grid.appendChild(makeAllocationCard(assetSlices, total, isLoading));
-  grid.appendChild(makeCard(taxSlices, total, isLoading));
+  grid.appendChild(makeAllocationCard(assetSlices, total, isLoading, cashBuffer));
+  grid.appendChild(makeCard(taxSlices, total, isLoading, cashBuffer));
 
   container.appendChild(grid);
 }
