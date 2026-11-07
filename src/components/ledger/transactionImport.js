@@ -1,6 +1,6 @@
 import { Modal } from "../ui/modal.js";
 import { addTransactionsBatch, addPayee } from "../../state.js";
-import { parseCSV } from "../../utils/csv.js";
+import { parseCSV, repairSplitAmounts } from "../../utils/csv.js";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -158,7 +158,7 @@ export function showImportModal(accountId, categories, payees, existingTransacti
 
       const reader = new FileReader();
       reader.onload = (e) => {
-        const rows = parseCSV(e.target.result);
+        const rows = repairSplitAmounts(parseCSV(e.target.result));
         if (rows.length < 2) {
           el.querySelector("#imp-file-err").textContent = "File appears to be empty or has only a header row.";
           return;
