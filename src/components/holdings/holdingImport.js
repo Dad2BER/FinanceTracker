@@ -50,6 +50,22 @@ function autoDetectColumns(headers) {
   };
 }
 
+// Some brokers (e.g. Schwab) put a title row above the column headers, so the header row is
+// the first one naming a symbol column plus a separate quantity or value column. Falls back
+// to the first row so an unrecognized layout can still be mapped by hand in step 2.
+function findHeaderIndex(rows) {
+  const idx = rows.findIndex((row) => {
+    const { symbolCol, quantityCol, valueCol } = autoDetectColumns(row);
+    if (symbolCol === -1) return false;
+    return (quantityCol !== -1 && quantityCol !== symbolCol) ||
+           (valueCol !== -1 && valueCol !== symbolCol);
+  });
+  return idx === -1 ? 0 : idx;
+}
+
+// Summary rows such as "Positions Total", which carry a value but aren't holdings.
+const TOTAL_ROW = /^(\w+\s+)?(sub)?totals?:?$/i;
+
 function parseNum(str) {
   if (!str || !str.trim()) return null;
   const s = str.trim().replace(/[$,\s]/g, "");
@@ -156,9 +172,23 @@ export function showHoldingImportModal(account) {
 
   // ── Step 2: Column mapping ──────────────────────────────────────────────────
   function step2() {
-    const headers = _csvRows[0];
-    const dataRows = _csvRows.slice(1).filter((r) => r.some((f) => f.trim()));
+    const headerIdx = findHeaderIndex(_csvRows);
+    const headers = _csvRows[headerIdx];
+    const rowsBelowHeader = _csvRows.slice(headerIdx + 1);
     const det = autoDetectColumns(headers);
+    const existingSymbols = new Set(account.holdings.map((h) => h.symbol.toUpperCase()));
+
+    // Drops totals and footer text (disclaimers, download dates). A row without any number
+    // is only kept if it names a current holding, so it can't get flagged for removal.
+    function holdingRows(symCol, qtyCol, valCol) {
+      return rowsBelowHeader.filter((row) => {
+        const symbol = (row[symCol] || "").trim();
+        if (!symbol || TOTAL_ROW.test(symbol)) return false;
+        if (existingSymbols.has(symbol.toUpperCase())) return true;
+        return (qtyCol >= 0 && parseNum(row[qtyCol]) !== null) ||
+               (valCol >= 0 && parseNum(row[valCol]) !== null);
+      });
+    }
 
     function buildColSel(id, selectedIdx, includeNone = false) {
       const none = includeNone
@@ -174,7 +204,7 @@ export function showHoldingImportModal(account) {
       <h3>Import Holdings — Step 2 of 3</h3>
       <p class="dim" style="margin-bottom:1rem;font-size:0.9rem;">
         Confirm which columns contain the symbol, quantity, and market value.
-        <strong>${dataRows.length}</strong> data row(s) detected.
+        <strong id="hi-row-count"></strong> holding row(s) detected.
       </p>
       <div class="form-group">
         <label for="hi-sym-col">Symbol Column</label>
@@ -208,7 +238,9 @@ export function showHoldingImportModal(account) {
       let html = `<table class="holdings-table"><thead><tr>
         <th>Symbol</th><th class="align-right">Quantity</th><th class="align-right">Value</th>
       </tr></thead><tbody>`;
-      for (const row of dataRows.slice(0, 3)) {
+      const rows = holdingRows(symCol, qtyCol, valCol);
+      el.querySelector("#hi-row-count").textContent = rows.length;
+      for (const row of rows.slice(0, 3)) {
         html += `<tr>
           <td>${escHtml(row[symCol] || "—")}</td>
           <td class="align-right">${escHtml(qtyCol >= 0 ? (row[qtyCol] || "—") : "—")}</td>
@@ -234,9 +266,8 @@ export function showHoldingImportModal(account) {
       }
 
       const importRows = [];
-      for (const row of dataRows) {
-        const symbol = (row[symCol] || "").trim().toUpperCase();
-        if (!symbol) continue;
+      for (const row of holdingRows(symCol, qtyCol, valCol)) {
+        const symbol = row[symCol].trim().toUpperCase();
         importRows.push({
           symbol,
           rawQty: qtyCol >= 0 ? parseNum(row[qtyCol]) : null,
