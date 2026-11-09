@@ -57,6 +57,7 @@ finances
 
 reports
   ├── ytd-spending   (Monthly Spend)
+  ├── tracking       (Tracking — Living Exp. / Entertainment / Cap. Ex.; Annual or Last 12 Months)
   └── subcat-spend   (Subcategory Spend)
 
 retirement
