@@ -6,8 +6,10 @@ import { createPieChart } from "../dashboard/pieChart.js";
 // Entertainment — top-level categories "Entertainment" and "Restaurants"
 // Living Exp.   — every other top-level category
 // Transfers and excluded transactions are ignored, as on Monthly Spend.
+// Transactions tagged "Business" are left out entirely.
 
 const CAP_EX_TAG = "Cap. Ex.";
+const EXCLUDED_TAGS = new Set(["Business"]);
 const ENTERTAINMENT_CATS = new Set(["Entertainment", "Restaurants"]);
 const FIRST_ANNUAL_YEAR = 2026;
 
@@ -160,6 +162,7 @@ export function renderTrackingView(container, accounts, categories) {
       const month = (tx.date || "").slice(0, 7);
       if (month.length !== 7 || month < rangeStart || month > currentMonthStr) return;
       if (tx.excluded) return;
+      if (EXCLUDED_TAGS.has((tx.tag || "").trim())) return;
       const catName = (tx.categoryId ? catById.get(tx.categoryId) : null) || "Uncategorized";
       if (catName === "Transfer") return;
       const bucket = bucketFor(tx, catName);
