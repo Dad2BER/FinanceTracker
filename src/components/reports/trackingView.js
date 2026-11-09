@@ -4,6 +4,7 @@ import { createPieChart } from "../dashboard/pieChart.js";
 // ── Tracking: spend grouped into three fixed buckets ──────────────────────────
 // Cap. Ex.      — any transaction tagged "Cap. Ex." (wins over its category)
 // Entertainment — top-level categories "Entertainment" and "Restaurants"
+// Health        — top-level category "Health"
 // Living Exp.   — every other top-level category
 // Transfers and excluded transactions are ignored, as on Monthly Spend.
 // Transactions tagged "Business" are left out entirely.
@@ -11,11 +12,13 @@ import { createPieChart } from "../dashboard/pieChart.js";
 const CAP_EX_TAG = "Cap. Ex.";
 const EXCLUDED_TAGS = new Set(["Business"]);
 const ENTERTAINMENT_CATS = new Set(["Entertainment", "Restaurants"]);
+const HEALTH_CATS = new Set(["Health"]);
 const FIRST_ANNUAL_YEAR = 2026;
 
 // Stack order (bottom → top) and colours
 const BUCKETS = [
   { id: "Living Exp.",   color: "#6366f1" },
+  { id: "Health",        color: "#e15759" },
   { id: "Entertainment", color: "#f28e2c" },
   { id: "Cap. Ex.",      color: "#59a14f" },
 ];
@@ -67,6 +70,7 @@ function shortMoney(v) {
 function bucketFor(tx, catName) {
   if ((tx.tag || "").trim() === CAP_EX_TAG) return "Cap. Ex.";
   if (ENTERTAINMENT_CATS.has(catName)) return "Entertainment";
+  if (HEALTH_CATS.has(catName)) return "Health";
   return "Living Exp.";
 }
 
