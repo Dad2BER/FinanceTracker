@@ -177,13 +177,9 @@ export function setAccountInstitution(id, institution) {
 
 /**
  * Upserts daily value snapshots for one or more accounts in a single save.
- * Each POST to /api/data fully replaces the profile's stored data, and the
- * server handles requests concurrently — firing one saveData() per account
- * (as this used to do via a per-account call) sends several overlapping
- * full-state writes whose completion order isn't guaranteed, so a
- * still-in-flight earlier (less complete) request can land last and wipe
- * out later accounts' updates. Batching into one call/one save avoids that
- * race entirely.
+ * (Batched originally to dodge overlapping full-state POSTs racing each
+ * other; saveData() now serializes and coalesces saves, but one save per
+ * batch is still cheaper than one per account.)
  *
  * Intentionally does NOT call notify() — recording history must not
  * trigger re-renders or it would create an infinite loop.
