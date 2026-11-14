@@ -57,20 +57,54 @@ function parseAmount(str) {
 
 // Lowercase and collapse runs of whitespace/punctuation to a single space so
 // bank padding ("BILLPAY   CHASE"), NBSPs, or hyphens don't defeat matching.
-function normalizeForMatch(str) {
-  return (str || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+// Returns up to two variants: [spaced] and, when different, [joined] — where
+// apostrophes and ampersands are dropped instead of spaced, so "AT&T" ↔ "ATT*BILL"
+// and "MCDONALD'S" ↔ "MCDONALDS" still match. Index 0 is the preferred variant.
+function matchVariants(str) {
+  const s = (str || "").toLowerCase();
+  const spaced = s.replace(/[^a-z0-9]+/g, " ").trim();
+  const joined = s.replace(/['’&]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  return spaced === joined ? [spaced] : [spaced, joined];
 }
 
+// Index of the first occurrence of needle in hay that begins at a word start,
+// or -1. Stops short payees matching mid-word ("ATT" in "HYATT", "GAP" in "SINGAPORE").
+function wordStartIndex(hay, needle) {
+  let i = hay.indexOf(needle);
+  while (i !== -1) {
+    if (i === 0 || hay[i - 1] === " ") return i;
+    i = hay.indexOf(needle, i + 1);
+  }
+  return -1;
+}
+
+// Picks the payee whose name appears EARLIEST in the description, then the
+// longest. Banks put the merchant first and generic words later, so
+// "ATT*BILL PAYMENT" resolves to AT&T rather than a generic "Payment" payee.
 function findMatchingPayee(description, payees) {
-  const desc = normalizeForMatch(description);
+  const descVars = matchVariants(description);
   let best = null;
-  let bestLen = 0;
+  let bestPos = Infinity, bestLen = 0, bestRank = Infinity;
   for (const payee of payees) {
-    const name = normalizeForMatch(payee.name);
-    if (name.length > 0 && desc.includes(name) && name.length > bestLen) {
-      best = payee;
-      bestLen = name.length;
-    }
+    const nameVars = matchVariants(payee.name);
+    nameVars.forEach((name, ni) => {
+      if (!name) return;
+      descVars.forEach((desc, di) => {
+        const pos = wordStartIndex(desc, name);
+        if (pos === -1) return;
+        const rank = ni + di; // 0 = matched without the &/' fallback
+        if (
+          pos < bestPos ||
+          (pos === bestPos && name.length > bestLen) ||
+          (pos === bestPos && name.length === bestLen && rank < bestRank)
+        ) {
+          best = payee;
+          bestPos = pos;
+          bestLen = name.length;
+          bestRank = rank;
+        }
+      });
+    });
   }
   return best;
 }
