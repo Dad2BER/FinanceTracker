@@ -87,7 +87,14 @@
       color: var(--color-primary);
       font-weight: 600;
     }
-    .shell-end { margin-left: auto; }
+    .shell-end { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+    /* Background price refresh indicator (set by onPriceStatus in app.js) */
+    .price-status {
+      color: var(--color-text-dim);
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+    .price-status[hidden] { display: none; }
     .shell-icon-btn {
       background: none;
       border: none;

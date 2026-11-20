@@ -1,6 +1,5 @@
-import { getAccounts, getAccount, getCategories, getPayees, getTags, getRocRates, getChecks, subscribe, initState, recordAccountValues, updateHoldingDividend } from "./state.js";
-import { fetchQuotes } from "./services/prices.js";
-import { fetchDividendMetric } from "./services/finnhub.js";
+import { getAccounts, getAccount, getCategories, getPayees, getTags, getRocRates, getChecks, subscribe, initState, recordAccountValues } from "./state.js";
+import { getCachedQuotes, staleSymbols, refreshQuotes, onPriceStatus, pendingSymbolCount } from "./services/prices.js";
 import {
   loadData, loadApiKey, saveApiKey, loadAvKey, saveAvKey,
   loadProfiles, createProfile, renameProfile, deleteProfile,
@@ -110,9 +109,11 @@ let profiles = [];        // [{ id, name, createdAt }, ...]
 let currentProfileId = null;
 
 // ── Price State ───────────────────────────────────────────────────────────────
-let prices = null;
+// prices/quoteDetails persist across navigation; they're seeded from the price
+// cache and updated as refreshed quotes arrive (see loadPricesForCurrentView).
+let prices = {};
 let quoteDetails = {};   // { symbol: { dp, d } } — daily % and $ change
-let pricesLoading = false;
+let pricesLoading = false; // derived in render(): fetching AND nothing to show yet
 let pricesError = null;
 
 const container = document.getElementById("app");
@@ -213,9 +214,8 @@ async function switchProfile(id) {
   saveActiveProfileId(id);
 
   // Reset price state
-  prices = null;
+  prices = {};
   quoteDetails = {};
-  pricesLoading = false;
   pricesError = null;
 
   // Load the new profile's data and reinitialize state
@@ -225,6 +225,7 @@ async function switchProfile(id) {
   } catch (e) {
     console.error("[switchProfile] failed to load data:", e);
   }
+  mergeCachedPrices(uniqueSymbols(getAccounts()));
 
   // Navigate back to the portfolio page and re-render
   view = { tab: "finances", page: "summary" };
@@ -289,7 +290,13 @@ function initShell() {
   // Settings end
   const end = document.createElement("div");
   end.className = "shell-end";
-  end.innerHTML = `<button class="shell-icon-btn" id="shell-settings-btn" title="Settings">&#9881; Settings</button>`;
+  end.innerHTML = `<span class="price-status" id="shell-price-status" hidden></span>` +
+    `<button class="shell-icon-btn" id="shell-settings-btn" title="Settings">&#9881; Settings</button>`;
+  const priceStatusEl = end.querySelector("#shell-price-status");
+  onPriceStatus((n) => {
+    priceStatusEl.hidden = n === 0;
+    priceStatusEl.textContent = `Updating prices… ${n} left`;
+  });
 
   header.appendChild(brand);
   header.appendChild(profileWrap);
@@ -422,12 +429,16 @@ function updateShell() {
 function render() {
   if (!shellInitialized) return;
   updateShell();
+  cancelScheduledRender();
+
+  const viewSymbols = viewPriceSymbols() || [];
+  pricesLoading = pendingSymbolCount() > 0 && viewSymbols.length > 0 &&
+    viewSymbols.every((s) => prices[s] === undefined);
 
   if (view.tab === "finances") {
     if (view.page === "summary") {
       const accounts = getAccounts();
       const visibleAccounts = accounts.filter((a) => !a.hidden);
-      const symbols = uniqueSymbols(accounts);
       renderAccountList(
         shellContent,
         visibleAccounts,
@@ -443,7 +454,7 @@ function render() {
               : { tab: "finances", page: "account-detail", accountId }
           );
         },
-        () => loadPrices(symbols),
+        () => loadPricesForCurrentView({ force: true }),
         accounts.some((a) => a.hidden)
       );
     } else if (view.page === "account-detail") {
@@ -452,9 +463,6 @@ function render() {
         navigateTo({ tab: "finances", page: "summary" });
         return;
       }
-      const symbols = account.holdings
-        .filter((h) => h.assetType !== "cash")
-        .map((h) => h.symbol);
       renderHoldingList(
         shellContent,
         account,
@@ -463,7 +471,7 @@ function render() {
         pricesLoading,
         pricesError,
         () => navigateTo({ tab: "finances", page: "summary" }),
-        () => loadPrices(symbols)
+        () => loadPricesForCurrentView({ force: true })
       );
     } else if (view.page === "assets") {
       renderAssetsView(
@@ -536,9 +544,7 @@ function render() {
           window.__AV_API_KEY__ = avKey;
           if (avKey) saveAvKey(avKey);
         }
-        // Reset price state so it reloads with new keys on next navigation
-        prices = null;
-        pricesLoading = false;
+        // Clear any error so prices retry with the new keys on next navigation
         pricesError = null;
       });
     } else if (view.page === "settings-database") {
@@ -580,17 +586,15 @@ function render() {
 function navigateTo(newView) {
   clearFilterState(shellContent);
   view = newView;
-  prices = null;
-  quoteDetails = {};
-  pricesLoading = false;
   pricesError = null;
   render();
   loadPricesForCurrentView();
 }
 
 // ── Daily Value Recording ──────────────────────────────────────────────────────
+let lastRecordedSnapshot = null; // skips re-saving an identical snapshot
+
 function recordDailyValues() {
-  if (prices === null) return;
   const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 
   // A daily snapshot is all-or-nothing. We compute every account's value first
@@ -618,59 +622,103 @@ function recordDailyValues() {
     }
   }
 
-  recordAccountValues(snapshots.map(({ id, value }) => ({ accountId: id, date: today, value })));
+  const entries = snapshots.map(({ id, value }) => ({ accountId: id, date: today, value }));
+  const key = JSON.stringify(entries);
+  if (key === lastRecordedSnapshot) return;
+  lastRecordedSnapshot = key;
+  recordAccountValues(entries);
 }
 
 // ── Price Loading ─────────────────────────────────────────────────────────────
-async function loadPrices(symbols) {
-  if (!symbols || symbols.length === 0) {
-    prices = {};
-    pricesLoading = false;
-    pricesError = null;
-    render();
+// Cache-first: a view shows cached prices immediately, then only symbols whose
+// cache is older than 30 minutes are re-fetched (throttled to Finnhub's rate
+// limit in finnhub.js). Prices stream in and the view re-renders at most every
+// few seconds — never while the user is typing in a field.
+const RENDER_THROTTLE_MS = 3000;
+let renderTimer = null;
+
+function cancelScheduledRender() {
+  if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+}
+
+function userIsEditing() {
+  const a = document.activeElement;
+  return !!a && !!shellContent && shellContent.contains(a) &&
+    /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName);
+}
+
+function scheduleRender(delay = RENDER_THROTTLE_MS) {
+  if (renderTimer) return;
+  renderTimer = setTimeout(() => {
+    renderTimer = null;
+    if (userIsEditing()) scheduleRender();
+    else render();
+  }, delay);
+}
+
+/** Symbols the current view prices, or null for views that show no prices. */
+function viewPriceSymbols() {
+  if (view.tab !== "finances") return null;
+  if (view.page === "summary" || view.page === "assets") return uniqueSymbols(getAccounts());
+  if (view.page === "account-detail") {
+    const account = getAccount(view.accountId);
+    return account
+      ? [...new Set(account.holdings.filter((h) => h.assetType !== "cash").map((h) => h.symbol))]
+      : null;
+  }
+  return null;
+}
+
+/** Copies cached prices into `prices`/`quoteDetails`. Returns true if anything changed. */
+function mergeCachedPrices(symbols) {
+  const cached = getCachedQuotes(symbols);
+  let changed = false;
+  for (const [sym, price] of Object.entries(cached.prices)) {
+    if (prices[sym] !== price) { prices[sym] = price; changed = true; }
+  }
+  for (const [sym, detail] of Object.entries(cached.details)) {
+    if (!quoteDetails[sym]) { quoteDetails[sym] = detail; changed = true; }
+  }
+  return changed;
+}
+
+function handleQuote(sym, price, detail) {
+  prices[sym] = price;
+  if (detail) quoteDetails[sym] = detail;
+  else delete quoteDetails[sym];
+  scheduleRender();
+}
+
+function loadPricesForCurrentView({ force = false } = {}) {
+  const symbols = viewPriceSymbols();
+  if (!symbols) return;
+  if (mergeCachedPrices(symbols)) render();
+
+  if (!force && staleSymbols(symbols).length === 0) {
     recordDailyValues();
     return;
   }
-  pricesLoading = true;
-  pricesError = null;
-  render();
-  try {
-    const result = await fetchQuotes(symbols);
-    prices = result.prices;
-    quoteDetails = result.quoteDetails ?? {};
-    pricesLoading = false;
-    recordDailyValues();
-    render();
-    if (result.needsManualEntry.length > 0) {
-      showManualPriceModal(result.needsManualEntry, (entered) => {
-        prices = { ...prices, ...entered };
-        recordDailyValues();
-        render();
-      });
-    }
-  } catch (e) {
-    pricesLoading = false;
-    pricesError = e.message || "Failed to fetch prices.";
-    render();
-  }
-}
 
-function loadPricesForCurrentView() {
-  if (view.tab === "settings" || view.tab === "retirement" || view.tab === "reports") return;
-  if (view.tab === "finances") {
-    if (view.page === "ledger-detail") return;
-    if (view.page === "summary" || view.page === "assets") {
-      loadPrices(uniqueSymbols(getAccounts()));
-    } else if (view.page === "account-detail") {
-      const account = getAccount(view.accountId);
-      if (account) {
-        const symbols = account.holdings
-          .filter((h) => h.assetType !== "cash")
-          .map((h) => h.symbol);
-        loadPrices(symbols);
+  const nothingToShow = symbols.every((s) => prices[s] === undefined);
+  refreshQuotes(symbols, { force, onQuote: handleQuote })
+    .then(({ needsManualEntry }) => {
+      cancelScheduledRender();
+      scheduleRender(userIsEditing() ? RENDER_THROTTLE_MS : 0);
+      recordDailyValues();
+      // Don't stack on top of a modal the user already has open
+      if (needsManualEntry.length > 0 && !document.querySelector(".modal-backdrop")) {
+        showManualPriceModal(needsManualEntry, (entered) => {
+          Object.assign(prices, entered);
+          recordDailyValues();
+          render();
+        });
       }
-    }
-  }
+    })
+    .catch((e) => {
+      pricesError = e.message || "Failed to fetch prices.";
+      render();
+    });
+  if (nothingToShow) render(); // show the loading state
 }
 
 function uniqueSymbols(accounts) {
@@ -681,30 +729,6 @@ function uniqueSymbols(accounts) {
   )];
 }
 
-// ── Dividend Rate Fetch ────────────────────────────────────────────────────────
-async function loadDividendRates() {
-  const accounts = getAccounts().filter((a) => a.accountType === "asset");
-  // Collect all non-cash holdings across all asset accounts
-  const allHoldings = accounts.flatMap((a) =>
-    (a.holdings || [])
-      .filter((h) => h.assetType !== "cash")
-      .map((h) => ({ accountId: a.id, holding: h }))
-  );
-  // Fetch dividend rate per unique symbol, then apply to all matching holdings
-  const symbols = [...new Set(allHoldings.map((x) => x.holding.symbol))];
-  const rateMap = {};
-  await Promise.all(symbols.map(async (sym) => {
-    rateMap[sym] = await fetchDividendMetric(sym);
-  }));
-  for (const { accountId, holding } of allHoldings) {
-    const dps = rateMap[holding.symbol];
-    // Only fill in the dividend if the user hasn't already set one
-    if (dps > 0 && !(holding.dividendPerShare > 0)) {
-      updateHoldingDividend(accountId, holding.id, dps);
-    }
-  }
-}
-
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function completeBootstrap(data) {
   initState(data ?? { accounts: [] }, currentProfileId);
@@ -712,16 +736,16 @@ async function completeBootstrap(data) {
   subscribe(() => {
     if (shellInitialized) {
       render();
-      if (!pricesLoading) loadPricesForCurrentView();
+      loadPricesForCurrentView(); // only fetches new or stale symbols
     }
   });
   if (!window.__FINNHUB_API_KEY__) {
     showApiKeyScreen();
   } else {
     initShell();
+    mergeCachedPrices(uniqueSymbols(getAccounts()));
     render();
     loadPricesForCurrentView();
-    loadDividendRates();
   }
 }
 
