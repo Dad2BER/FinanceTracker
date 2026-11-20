@@ -1,5 +1,6 @@
 import { Modal } from "../ui/modal.js";
 import { applyHoldingsImport } from "../../state.js";
+import { readXlsxRows } from "../../utils/xlsx.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,54 @@ function autoDetectColumns(headers) {
     symbolCol:   findFirst("symbol", "ticker", "cusip", "security"),
     quantityCol: findFirst("quantity", "shares", "units", "qty"),
     valueCol:    findFirst("market value", "mkt val", "total value", "value", "amount"),
+    // Optional hint columns — not user-mappable; used to resolve symbol-less cash rows and
+    // to pre-fill Origin / Asset Class / Instrument for new holdings in step 3.
+    nameCol:     findFirst("name", "description"),
+    typeCol:     findFirst("product type", "security type", "asset type"),
+    cusipCol:    findFirst("cusip"),
+    priceCol:    findFirst("last ($)", "price", "last"),
   };
+}
+
+// Placeholder "symbols" some brokers use for rows with no ticker (Morgan Stanley puts "-"
+// in the Symbol column of its Cash and Total rows).
+const PLACEHOLDER_SYMBOL = /^(-+|—|n\/a)$/i;
+
+// Symbol for a row, or "" if it has none. A symbol-less row whose name is "Cash…" (e.g.
+// Morgan Stanley's "Cash" row) becomes the CASH holding.
+function rowSymbol(row, symCol, nameCol) {
+  let sym = (row[symCol] || "").trim();
+  if (PLACEHOLDER_SYMBOL.test(sym)) sym = "";
+  if (!sym && nameCol >= 0 && /^cash\b/i.test((row[nameCol] || "").trim())) sym = "CASH";
+  return sym;
+}
+
+const BOND_WORDS = /\b(BONDS?|BND|TREASURY|TREAS|GOVT|GOVERNMENT|MUNI|MUNICIPAL|FIXED INC(OME)?|INCOME|DURATION|AGGREGATE|AGG)\b/;
+const INTL_WORDS = /\b(ADRS?|ADS|INTL|INTERNATIONAL|EMERGING|EAFE|EX[- ]US|DEVELOPED|GLOBAL)\b/;
+
+// Best-guess Origin / Asset Class / Instrument for a new holding, from the broker's product
+// type column plus the security name and CUSIP. Leaves a field blank when unsure so the
+// user picks it in step 3. Foreign issuers have CUSIPs (CINS) starting with a letter.
+function guessClassification(symbol, { type = "", name = "", cusip = "", price = null }) {
+  const t = type.toLowerCase();
+  const n = name.toUpperCase();
+  const isMoneyMarketSym = /^[A-Z]{3}XX$/.test(symbol);
+  if (symbol === "CASH" || /cash|money market|mmf|bdp|sweep/.test(t) ||
+      (isMoneyMarketSym && (price === null || price === 1))) {
+    return { origin: "domestic", assetType: "cash", instrumentType: isMoneyMarketSym ? "money-market" : "cash" };
+  }
+  const foreignIssuer = /\b(ADRS?|ADS)\b/.test(n) || /^[A-Z]/i.test(cusip);
+  // Fund names are matched on words like INTL/EMERGING too; company names aren't, since
+  // "INTL BUSINESS MACHINES" or "CARRIER GLOBAL" are US companies.
+  const origin = (foreignIssuer || (!/stock|equit/.test(t) && INTL_WORDS.test(n))) ? "international" : "domestic";
+  if (/stock|equit/.test(t)) return { origin, assetType: "equity", instrumentType: "stock" };
+  if (/etf|exchange.traded|closed.end|cef/.test(t)) {
+    return { origin, assetType: BOND_WORDS.test(n) ? "bonds" : "equity", instrumentType: "etf" };
+  }
+  if (/mutual|fund/.test(t)) {
+    return { origin, assetType: BOND_WORDS.test(n) ? "bonds" : "", instrumentType: "fund" };
+  }
+  return { origin: "", assetType: "", instrumentType: "" };
 }
 
 // Some brokers (e.g. Schwab) put a title row above the column headers, so the header row is
@@ -130,13 +178,13 @@ export function showHoldingImportModal(account) {
     el.innerHTML = `
       <h3>Import Holdings — Step 1 of 3</h3>
       <p class="dim" style="margin-bottom:1rem;font-size:0.9rem;">
-        Select a CSV file from your broker containing Symbol, Quantity, and Value columns.
+        Select a CSV or Excel (.xlsx) file from your broker containing Symbol, Quantity, and Value columns.
         Existing holdings will be compared by symbol — quantities will be updated, holdings
         absent from the file will be flagged for removal, and new symbols will be added.
       </p>
       <div class="form-group">
-        <label for="hi-file">CSV File</label>
-        <input type="file" id="hi-file" accept=".csv,.txt" class="form-input" style="padding:0.4rem;">
+        <label for="hi-file">CSV or Excel File</label>
+        <input type="file" id="hi-file" accept=".csv,.txt,.xlsx" class="form-input" style="padding:0.4rem;">
         ${_csvRows ? `<span class="dim" style="font-size:0.8rem">File already loaded — select a new file or click Next to continue.</span>` : ""}
         <span class="field-error" id="hi-file-err"></span>
       </div>
@@ -150,23 +198,26 @@ export function showHoldingImportModal(account) {
       const file = el.querySelector("#hi-file").files[0];
       if (!file) {
         if (_csvRows) { goStep(step2); return; }
-        el.querySelector("#hi-file-err").textContent = "Please select a CSV file.";
+        el.querySelector("#hi-file-err").textContent = "Please select a CSV or Excel file.";
         return;
       }
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const rows = parseCSV(e.target.result);
+      const errEl = el.querySelector("#hi-file-err");
+      const isXlsx = /\.xlsx$/i.test(file.name);
+      const load = isXlsx
+        ? file.arrayBuffer().then(readXlsxRows)
+        : file.text().then(parseCSV);
+      load.then((rows) => {
         if (rows.length < 2) {
-          el.querySelector("#hi-file-err").textContent = "File appears empty or has only a header row.";
+          errEl.textContent = "File appears empty or has only a header row.";
           return;
         }
         _csvRows = rows;
         goStep(step2);
-      };
-      reader.onerror = () => {
-        el.querySelector("#hi-file-err").textContent = "Could not read the file.";
-      };
-      reader.readAsText(file);
+      }).catch((err) => {
+        errEl.textContent = isXlsx
+          ? `Could not read the Excel file: ${err.message || err}`
+          : "Could not read the file.";
+      });
     });
   }
 
@@ -180,14 +231,16 @@ export function showHoldingImportModal(account) {
 
     // Drops totals and footer text (disclaimers, download dates). A row without any number
     // is only kept if it names a current holding, so it can't get flagged for removal.
+    // Returns [{ row, symbol }].
     function holdingRows(symCol, qtyCol, valCol) {
-      return rowsBelowHeader.filter((row) => {
-        const symbol = (row[symCol] || "").trim();
-        if (!symbol || TOTAL_ROW.test(symbol)) return false;
-        if (existingSymbols.has(symbol.toUpperCase())) return true;
-        return (qtyCol >= 0 && parseNum(row[qtyCol]) !== null) ||
-               (valCol >= 0 && parseNum(row[valCol]) !== null);
-      });
+      return rowsBelowHeader
+        .map((row) => ({ row, symbol: rowSymbol(row, symCol, det.nameCol) }))
+        .filter(({ row, symbol }) => {
+          if (!symbol || TOTAL_ROW.test(symbol)) return false;
+          if (existingSymbols.has(symbol.toUpperCase())) return true;
+          return (qtyCol >= 0 && parseNum(row[qtyCol]) !== null) ||
+                 (valCol >= 0 && parseNum(row[valCol]) !== null);
+        });
     }
 
     function buildColSel(id, selectedIdx, includeNone = false) {
@@ -240,9 +293,9 @@ export function showHoldingImportModal(account) {
       </tr></thead><tbody>`;
       const rows = holdingRows(symCol, qtyCol, valCol);
       el.querySelector("#hi-row-count").textContent = rows.length;
-      for (const row of rows.slice(0, 3)) {
+      for (const { row, symbol } of rows.slice(0, 3)) {
         html += `<tr>
-          <td>${escHtml(row[symCol] || "—")}</td>
+          <td>${escHtml(symbol || "—")}</td>
           <td class="align-right">${escHtml(qtyCol >= 0 ? (row[qtyCol] || "—") : "—")}</td>
           <td class="align-right">${escHtml(valCol >= 0 ? (row[valCol] || "—") : "—")}</td>
         </tr>`;
@@ -266,12 +319,19 @@ export function showHoldingImportModal(account) {
       }
 
       const importRows = [];
-      for (const row of holdingRows(symCol, qtyCol, valCol)) {
-        const symbol = row[symCol].trim().toUpperCase();
+      const cell = (row, col) => (col >= 0 ? (row[col] || "").trim() : "");
+      for (const { row, symbol: rawSym } of holdingRows(symCol, qtyCol, valCol)) {
+        const symbol = rawSym.toUpperCase();
         importRows.push({
           symbol,
           rawQty: qtyCol >= 0 ? parseNum(row[qtyCol]) : null,
           rawVal: valCol >= 0 ? parseNum(row[valCol]) : null,
+          hint: guessClassification(symbol, {
+            type:  cell(row, det.typeCol),
+            name:  cell(row, det.nameCol),
+            cusip: cell(row, det.cusipCol),
+            price: det.priceCol >= 0 ? parseNum(row[det.priceCol]) : null,
+          }),
         });
       }
 
@@ -319,13 +379,15 @@ export function showHoldingImportModal(account) {
       } else {
         // Brand-new symbol
         const isCashLikely = row.rawQty === null && row.rawVal !== null;
+        const hint = row.hint || {};
         adds.push({
           symbol:         row.symbol,
           rawQty:         row.rawQty,
           rawVal:         row.rawVal,
-          origin:         "",
-          assetType:      isCashLikely ? "cash" : "",
-          instrumentType: isCashLikely ? "cash" : "",
+          origin:         hint.origin || "",
+          assetType:      isCashLikely ? "cash" : (hint.assetType || ""),
+          instrumentType: isCashLikely ? (hint.instrumentType === "money-market" ? "money-market" : "cash")
+                                       : (hint.instrumentType || ""),
           skip:           false,
         });
       }

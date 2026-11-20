@@ -261,6 +261,12 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
 - A row is a duplicate (pre-unchecked, like the ledger importer) if an existing `DividendIncome` record matches on **account + date + symbol + amount** — see `buildExistingKeys`/`dupKey` in `dividendImport.js`. Deliberately *not* keyed on `institution`: manual entries (and anything imported before this feature existed) have no `institution` value, so requiring it meant those rows could never be recognized as duplicates of a later import — this caused real duplicate rows in production before being caught and fixed.
 - Shares `parseCSV` from `src/utils/csv.js` with the ledger transaction importer (`transactionImport.js`).
 
+### Holdings Import (`holdingImport.js`)
+- "⇧ Import" on an asset account's holdings page: 3-step modal (file → column mapping → review updates/removals/adds by symbol).
+- Accepts CSV **or .xlsx** (Morgan Stanley exports "Holdings Ungrouped.xlsx"). XLSX is read by the zero-dependency `src/utils/xlsx.js` (`readXlsxRows` — native `DecompressionStream` + `DOMParser`, first sheet only) into the same `string[][]` shape as `parseCSV`.
+- Header row is auto-found (title rows above it are skipped). A Symbol of `-`/`--`/`N/A` counts as blank; a blank-symbol row whose Name starts with "Cash" becomes the `CASH` holding (value used as quantity). Morgan Stanley's "Total" row and footer disclaimers are dropped.
+- New holdings get Origin / Asset Class / Instrument pre-filled by `guessClassification` from the Product/Security Type, Name and CUSIP columns (ADR or letter-prefixed CUSIP → international; `???XX` at $1 → money market; bond words → bonds). Blank when unsure; user reviews in step 3.
+
 ### RocRate (`Settings → Return of Capital`)
 ```js
 {
