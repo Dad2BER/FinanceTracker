@@ -337,21 +337,31 @@ export function deleteHolding(accountId, holdingId) {
 // updates: [{ holdingId, shares }]
 // deletes: [{ holdingId }]
 // adds:    [{ symbol, shares, origin, assetType, instrumentType }]
+// updates: [{ holdingId, shares?, dividendPerShare? }] — only the fields present change
+// adds:    [{ symbol, shares, origin?, assetType?, instrumentType?, dividendPerShare? }]
 export function applyHoldingsImport(accountId, { updates = [], deletes = [], adds = [] }) {
   const deleteIds = new Set(deletes.map((d) => d.holdingId));
-  const updateMap = new Map(updates.map((u) => [u.holdingId, u.shares]));
+  const updateMap = new Map(updates.map((u) => [u.holdingId, u]));
   _data = {
     ..._data,
     accounts: _data.accounts.map((a) => {
       if (a.id !== accountId) return a;
       let holdings = (a.holdings || [])
         .filter((h) => !deleteIds.has(h.id))
-        .map((h) => updateMap.has(h.id) ? { ...h, shares: updateMap.get(h.id) } : h);
-      adds.forEach(({ symbol, shares, origin, assetType, instrumentType }) => {
+        .map((h) => {
+          const u = updateMap.get(h.id);
+          if (!u) return h;
+          const updated = { ...h };
+          if (u.shares != null)           updated.shares = u.shares;
+          if (u.dividendPerShare != null) updated.dividendPerShare = u.dividendPerShare;
+          return updated;
+        });
+      adds.forEach(({ symbol, shares, origin, assetType, instrumentType, dividendPerShare }) => {
         const h = { id: generateId(), symbol: normalizeSymbol(symbol), shares: parseFloat(shares) };
         if (origin)         h.origin         = origin;
         if (assetType)      h.assetType      = assetType;
         if (instrumentType) h.instrumentType = instrumentType;
+        if (dividendPerShare != null) h.dividendPerShare = dividendPerShare;
         holdings.push(h);
       });
       return { ...a, holdings };

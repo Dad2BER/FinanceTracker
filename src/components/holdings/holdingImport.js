@@ -51,6 +51,8 @@ function autoDetectColumns(headers) {
     valueCol:    findFirst("market value", "mkt val", "total value", "value", "amount"),
     // Optional hint columns — not user-mappable; used to resolve symbol-less cash rows and
     // to pre-fill Origin / Asset Class / Instrument for new holdings in step 3.
+    // Annual dividend in $/share (Morgan Stanley: "Dividend Per Share ($)")
+    dividendCol: findFirst("dividend per share", "div per share", "annual dividend"),
     nameCol:     findFirst("name", "description"),
     typeCol:     findFirst("product type", "security type", "asset type"),
     cusipCol:    findFirst("cusip"),
@@ -122,6 +124,11 @@ function parseNum(str) {
   return isNaN(n) ? null : n;
 }
 
+function fmtDiv(n) {
+  if (n === null || n === undefined) return "—";
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+}
+
 function fmtQty(n) {
   if (n === null || n === undefined) return "—";
   return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
@@ -180,8 +187,9 @@ export function showHoldingImportModal(account) {
       <h3>Import Holdings — Step 1 of 3</h3>
       <p class="dim" style="margin-bottom:1rem;font-size:0.9rem;">
         Select a CSV or Excel (.xlsx) file from your broker containing Symbol, Quantity, and Value columns.
-        Existing holdings will be compared by symbol — quantities will be updated, holdings
-        absent from the file will be flagged for removal, and new symbols will be added.
+        Existing holdings will be compared by symbol — quantities (and annual dividends per share,
+        if the file has them) will be updated, holdings absent from the file will be flagged for
+        removal, and new symbols will be added.
       </p>
       <div class="form-group">
         <label for="hi-file">CSV or Excel File</label>
@@ -274,6 +282,12 @@ export function showHoldingImportModal(account) {
         </label>
         ${buildColSel("hi-val-col", det.valueCol !== -1 ? det.valueCol : 0, true)}
       </div>
+      <div class="form-group">
+        <label for="hi-div-col">Dividend / Share Column
+          <span style="font-weight:400;font-size:0.85em"> — optional; annual $ per share</span>
+        </label>
+        ${buildColSel("hi-div-col", det.dividendCol, true)}
+      </div>
       <div class="import-preview">
         <div class="import-preview-label">Preview (first 3 rows)</div>
         <div id="hi-preview" class="import-preview-table-wrap"></div>
@@ -313,6 +327,7 @@ export function showHoldingImportModal(account) {
       const symCol = parseInt(el.querySelector("#hi-sym-col").value);
       const qtyCol = parseInt(el.querySelector("#hi-qty-col").value);
       const valCol = parseInt(el.querySelector("#hi-val-col").value);
+      const divCol = parseInt(el.querySelector("#hi-div-col").value);
 
       if (isNaN(symCol) || symCol < 0) {
         el.querySelector("#hi-map-err").textContent = "Symbol column is required.";
@@ -327,6 +342,7 @@ export function showHoldingImportModal(account) {
           symbol,
           rawQty: qtyCol >= 0 ? parseNum(row[qtyCol]) : null,
           rawVal: valCol >= 0 ? parseNum(row[valCol]) : null,
+          rawDiv: divCol >= 0 ? parseNum(row[divCol]) : null,
           hint: guessClassification(symbol, {
             type:  cell(row, det.typeCol),
             name:  cell(row, det.nameCol),
@@ -357,7 +373,7 @@ export function showHoldingImportModal(account) {
       return null;
     }
 
-    // Section 1 — quantity changes for existing holdings
+    // Section 1 — quantity and/or dividend changes for existing holdings
     const updates = [];
     // Section 2 — existing holdings absent from import file
     const deletes = [];
@@ -367,11 +383,16 @@ export function showHoldingImportModal(account) {
     importRows.forEach((row) => {
       const existing = existingBySymbol.get(row.symbol);
       if (existing) {
-        const newQty = effectiveQty(row.rawQty, row.rawVal, existing.assetType);
-        if (newQty !== null && Math.abs(newQty - existing.shares) > 0.000001) {
+        const qty = effectiveQty(row.rawQty, row.rawVal, existing.assetType);
+        const qtyChanged = qty !== null && Math.abs(qty - existing.shares) > 0.000001;
+        // A missing dividend counts as 0, so "0" in the file doesn't flag a no-dividend holding
+        const divChanged = row.rawDiv !== null &&
+          Math.abs(row.rawDiv - (existing.dividendPerShare || 0)) > 0.000001;
+        if (qtyChanged || divChanged) {
           updates.push({
             holding: existing,
-            newQty,
+            newQty: qtyChanged ? qty : null,
+            newDiv: divChanged ? row.rawDiv : null,
             fromValue: row.rawQty === null,
             skip: false,
           });
@@ -385,6 +406,7 @@ export function showHoldingImportModal(account) {
           symbol:         row.symbol,
           rawQty:         row.rawQty,
           rawVal:         row.rawVal,
+          rawDiv:         row.rawDiv,
           origin:         hint.origin || "",
           assetType:      isCashLikely ? "cash" : (hint.assetType || ""),
           instrumentType: isCashLikely ? (hint.instrumentType === "money-market" ? "money-market" : "cash")
@@ -411,7 +433,7 @@ export function showHoldingImportModal(account) {
     summary.className = "dim";
     summary.style.cssText = "margin-bottom:0.75rem;font-size:0.9rem";
     summary.textContent =
-      `${updates.length} quantity change${updates.length !== 1 ? "s" : ""} · ` +
+      `${updates.length} update${updates.length !== 1 ? "s" : ""} · ` +
       `${deletes.length} removal${deletes.length !== 1 ? "s" : ""} · ` +
       `${adds.length} new holding${adds.length !== 1 ? "s" : ""}`;
     el.appendChild(summary);
@@ -447,6 +469,7 @@ export function showHoldingImportModal(account) {
           </th>
           <th>Symbol</th>
           <th class="align-right">Shares / Qty</th>
+          <th class="align-right">Div / Share</th>
           <th>Origin</th>
           <th>Asset Class</th>
           <th>Instrument</th>
@@ -463,7 +486,7 @@ export function showHoldingImportModal(account) {
     function addSectionRow(label, cssClass, count) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 6;
+      td.colSpan = 7;
       td.className = `hi-section-header ${cssClass}`;
       td.textContent = label + ` (${count})`;
       tr.appendChild(td);
@@ -472,7 +495,7 @@ export function showHoldingImportModal(account) {
 
     // ── Section 1: Quantity changes ───────────────────────────────────────────
     if (updates.length > 0) {
-      addSectionRow("Quantity Changes", "hi-section-update", updates.length);
+      addSectionRow("Updates", "hi-section-update", updates.length);
       updates.forEach((u) => {
         const tr = document.createElement("tr");
         tbody.appendChild(tr);
@@ -488,10 +511,17 @@ export function showHoldingImportModal(account) {
         const symTd = document.createElement("td"); symTd.textContent = u.holding.symbol; tr.appendChild(symTd);
 
         const qtyTd = document.createElement("td"); qtyTd.className = "align-right";
-        qtyTd.innerHTML =
-          `<span class="dim">${fmtQty(u.holding.shares)}</span> → <strong>${fmtQty(u.newQty)}</strong>` +
-          (u.fromValue ? ` <span class="dim" title="Quantity taken from Value column">(val)</span>` : "");
+        qtyTd.innerHTML = u.newQty === null
+          ? `<span class="dim">${fmtQty(u.holding.shares)}</span>`
+          : `<span class="dim">${fmtQty(u.holding.shares)}</span> → <strong>${fmtQty(u.newQty)}</strong>` +
+            (u.fromValue ? ` <span class="dim" title="Quantity taken from Value column">(val)</span>` : "");
         tr.appendChild(qtyTd);
+
+        const divTd = document.createElement("td"); divTd.className = "align-right";
+        divTd.innerHTML = u.newDiv === null
+          ? `<span class="dim">${fmtDiv(u.holding.dividendPerShare)}</span>`
+          : `<span class="dim">${fmtDiv(u.holding.dividendPerShare)}</span> → <strong>${fmtDiv(u.newDiv)}</strong>`;
+        tr.appendChild(divTd);
 
         const originTd = document.createElement("td"); originTd.className = "dim"; originTd.style.fontSize = "0.85rem";
         originTd.textContent = u.holding.origin || "—"; tr.appendChild(originTd);
@@ -523,6 +553,9 @@ export function showHoldingImportModal(account) {
 
         const qtyTd = document.createElement("td"); qtyTd.className = "align-right dim";
         qtyTd.textContent = fmtQty(d.holding.shares); tr.appendChild(qtyTd);
+
+        const divTd = document.createElement("td"); divTd.className = "align-right dim";
+        divTd.textContent = fmtDiv(d.holding.dividendPerShare); tr.appendChild(divTd);
 
         const originTd = document.createElement("td"); originTd.className = "dim"; originTd.style.fontSize = "0.85rem";
         originTd.textContent = d.holding.origin || "—"; tr.appendChild(originTd);
@@ -561,6 +594,9 @@ export function showHoldingImportModal(account) {
           qtyTd.innerHTML = `<span style="color:var(--color-warning)">Missing</span>`;
         }
         tr.appendChild(qtyTd);
+
+        const divTd = document.createElement("td"); divTd.className = "align-right";
+        divTd.textContent = fmtDiv(a.rawDiv); tr.appendChild(divTd);
 
         // Origin dropdown
         const originTd = document.createElement("td");
@@ -651,7 +687,11 @@ export function showHoldingImportModal(account) {
       applyHoldingsImport(account.id, {
         updates: updates
           .filter((u) => !u.skip)
-          .map((u) => ({ holdingId: u.holding.id, shares: u.newQty })),
+          .map((u) => ({
+            holdingId: u.holding.id,
+            ...(u.newQty !== null ? { shares: u.newQty } : {}),
+            ...(u.newDiv !== null ? { dividendPerShare: u.newDiv } : {}),
+          })),
         deletes: deletes
           .filter((d) => !d.skip)
           .map((d) => ({ holdingId: d.holding.id })),
@@ -663,6 +703,7 @@ export function showHoldingImportModal(account) {
             origin:         a.origin         || null,
             assetType:      a.assetType      || null,
             instrumentType: a.instrumentType || null,
+            dividendPerShare: a.rawDiv,
           })),
       });
 

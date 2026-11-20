@@ -148,7 +148,7 @@ getRetirementInputsFromStorage(profileId?)
 
 **Price state** is local to `app.js` (not in `state.js`): `prices` and `quoteDetails` persist across navigation (seeded from the cache at bootstrap); `pricesLoading` is derived in `render()` as "fetching AND the view has no prices to show yet". Progressive updates re-render at most every 3s and never while focus is in an input/select/textarea in the content area. The header shows "Updating prices… N left" while the queue drains. Prices are never fetched for retirement or reports tabs. `recordDailyValues()` skips saving when the snapshot is unchanged.
 
-**Dividends are not fetched from any external source.** The old startup Finnhub `/stock/metric` lookup was removed (it doubled API calls every load). `dividendPerShare` is set manually (holding form or Assets view pencil).
+**Dividends are not fetched from any external source.** The old startup Finnhub `/stock/metric` lookup was removed (it doubled API calls every load). `dividendPerShare` comes from the holdings import (when the file has a dividend column) or is set manually (holding form or Assets view pencil).
 
 ### Component Conventions
 - Components are **plain functions**: `renderFoo(container, ...props)` — they set `container.innerHTML` or use `appendChild`.
@@ -274,6 +274,7 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
 - "⇧ Import" on an asset account's holdings page: 3-step modal (file → column mapping → review updates/removals/adds by symbol).
 - Accepts CSV **or .xlsx** (Morgan Stanley exports "Holdings Ungrouped.xlsx"). XLSX is read by the zero-dependency `src/utils/xlsx.js` (`readXlsxRows` — native `DecompressionStream` + `DOMParser`, first sheet only) into the same `string[][]` shape as `parseCSV`.
 - Header row is auto-found (title rows above it are skipped). A Symbol of `-`/`--`/`N/A` counts as blank; a blank-symbol row whose Name starts with "Cash" becomes the `CASH` holding (value used as quantity). Morgan Stanley's "Total" row and footer disclaimers are dropped.
+- Optional **Dividend / Share** column (auto-detected: "Dividend Per Share ($)" in Morgan Stanley exports — annual $/share, verified against the file's Est. Annual Income). When mapped, step 3 lists dividend changes alongside quantity changes ("Updates"), and new holdings get `dividendPerShare`. A missing dividend counts as 0, so a "0" in the file doesn't flag a holding that has none. `applyHoldingsImport` updates are `{ holdingId, shares?, dividendPerShare? }` — only present fields change; DRIP flag and other fields are kept.
 - New holdings get Origin / Asset Class / Instrument pre-filled by `guessClassification` from the Product/Security Type, Name and CUSIP columns (ADR or letter-prefixed CUSIP → international; `???XX` at $1 → money market; bond words → bonds). Blank when unsure; user reviews in step 3.
 
 ### RocRate (`Settings → Return of Capital`)
