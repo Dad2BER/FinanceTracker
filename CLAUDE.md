@@ -142,7 +142,8 @@ getRetirementInputsFromStorage(profileId?)
 - Price cache in localStorage (`financetracker_pricecache`): `{ [symbol]: { price, fetchedAt, dp, d, finnhubMissAt? } }`.
 - A view shows cached prices immediately; only symbols older than **30 minutes** (`STALE_AFTER_MS`) are re-fetched, in the background, and stream in via `onQuote`. "Refresh Prices" forces all of the view's symbols (still throttled — ~5 min for 300).
 - Symbols already in flight are never requested twice (overlapping refreshes share the request).
-- Finnhub returning `c = 0` means it doesn't carry the symbol → marked `finnhubMissAt`, sent to Alpha Vantage, and skipped on Finnhub for 7 days. Rate-limited / failed requests are **not** sent to AV.
+- Finnhub returning `c = 0` or HTTP 403 means it doesn't carry the symbol → marked `finnhubMissAt`, sent to Alpha Vantage, and skipped on Finnhub for 7 days. Rate-limited / failed requests are **not** sent to AV.
+- **Mutual funds go straight to Alpha Vantage**: holdings with instrument type `fund` (passed as `mutualFunds` by `app.js`) or any five-letter ticker ending in X (`isMutualFundTicker`). Finnhub is tried only if AV is unavailable.
 - Manual-price modal appears only after a refresh settles, for symbols that failed with no cached price or a cached price > 24h old.
 
 **Price state** is local to `app.js` (not in `state.js`): `prices` and `quoteDetails` persist across navigation (seeded from the cache at bootstrap); `pricesLoading` is derived in `render()` as "fetching AND the view has no prices to show yet". Progressive updates re-render at most every 3s and never while focus is in an input/select/textarea in the content area. The header shows "Updating prices… N left" while the queue drains. Prices are never fetched for retirement or reports tabs. `recordDailyValues()` skips saving when the snapshot is unchanged.
@@ -198,6 +199,7 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
 }
 ```
 - `cash` holdings: price is always $1/share, symbol is a display label, skipped by price APIs.
+- Symbols are stored via `normalizeSymbol` (`src/utils/symbols.js`): uppercased, share classes written with a dash — `HEI'A` (Morgan Stanley), `BRK/B`, `BRK.B` all become `HEI-A`/`BRK-B`. Applied in add/update/import and fixed up on load by `initState` (saves once if anything changed). Finnhub is queried as `HEI.A` first, then `HEI-A` (`finnhubSymbolCandidates`).
 - **Cash holdings CAN have dividendPerShare** — money market funds like VMFXX and FDRXX earn yield this way.
 - Mutual funds (e.g. FXAIX): fetched via Alpha Vantage since Finnhub doesn't carry them (auto-detected — see price fetching above).
 - Dividend is stored as **$/share** (not %). The UI displays it as yield % (`dividendPerShare / price × 100`), so yield fluctuates naturally as price changes. Falls back to `$X.XX/sh` display when price unavailable.

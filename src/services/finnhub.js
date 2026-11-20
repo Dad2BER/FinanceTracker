@@ -1,3 +1,5 @@
+import { finnhubSymbolCandidates } from "../utils/symbols.js";
+
 const BASE_URL = "https://finnhub.io/api/v1";
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -86,7 +88,7 @@ async function getJson(path, params, opts) {
   return schedule(async () => {
     const res = await fetchWithTimeout(`${BASE_URL}${path}?${qs}`);
     if (res.status === 429) throw new RateLimitError("Finnhub rate limit (429)");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
     return res.json();
   }, opts);
 }
@@ -96,12 +98,20 @@ async function getJson(path, params, opts) {
 /**
  * Fetches one quote. Resolves to
  *   { status: "ok", price, dp, d }   — dp/d = daily % and $ change
- *   { status: "unsupported" }        — Finnhub returned no price (c = 0), e.g.
- *                                      mutual funds the free tier doesn't cover
+ *   { status: "unsupported" }        — Finnhub returned no price (c = 0) or
+ *                                      denied access (403), e.g. mutual funds
+ *                                      the free tier doesn't cover
+ * `symbol` is sent as-is — see finnhubSymbolCandidates for share classes.
  * Rejects on network errors, timeouts, or a rate limit that outlasted retries.
  */
 export async function fetchQuote(symbol) {
-  const data = await getJson("/quote", { symbol });
+  let data;
+  try {
+    data = await getJson("/quote", { symbol });
+  } catch (e) {
+    if (e.status === 403) return { status: "unsupported" };
+    throw e;
+  }
   if (!data || !(data.c > 0)) return { status: "unsupported" };
   return { status: "ok", price: data.c, dp: data.dp ?? null, d: data.d ?? null };
 }
@@ -111,7 +121,7 @@ export async function fetchQuote(symbol) {
  * Returns the raw Finnhub /quote response: { c, d, dp, h, l, o, pc, t }
  */
 export async function fetchQuoteDetail(symbol) {
-  const data = await getJson("/quote", { symbol }, { priority: true });
+  const data = await getJson("/quote", { symbol: finnhubSymbolCandidates(symbol)[0] }, { priority: true });
   if (!data || data.c <= 0) throw new Error(`No price data for: ${symbol}`);
   return data;
 }
@@ -123,5 +133,5 @@ export async function fetchQuoteDetail(symbol) {
  *     weburl, logo, country, currency, ticker }
  */
 export async function fetchProfile(symbol) {
-  return getJson("/stock/profile2", { symbol }, { priority: true });
+  return getJson("/stock/profile2", { symbol: finnhubSymbolCandidates(symbol)[0] }, { priority: true });
 }

@@ -1,5 +1,6 @@
 import { saveData } from "./services/storage.js";
 import { generateId } from "./utils/uuid.js";
+import { normalizeSymbol } from "./utils/symbols.js";
 
 // Central reactive state — initialized by app.js via initState() after async load
 let _data = { accounts: [], categories: [], payees: [] };
@@ -7,6 +8,27 @@ let _profileId = null;  // set by initState; passed to saveData on every mutatio
 
 const RET_INPUTS_PREFIX    = "financetracker_ret_";
 const BUDGET_EST_PREFIX    = "financetracker_budget_est_";
+
+// Stored holding symbols use normalizeSymbol's form (share classes as HEI-A).
+// Older data (e.g. Morgan Stanley imports before this existed stored HEI'A) is
+// fixed up on load and saved once.
+function normalizeHoldingSymbols(accounts) {
+  let changed = false;
+  const fixed = accounts.map((a) => {
+    if (!Array.isArray(a.holdings)) return a;
+    let accChanged = false;
+    const holdings = a.holdings.map((h) => {
+      const sym = normalizeSymbol(h.symbol);
+      if (sym === h.symbol) return h;
+      accChanged = true;
+      return { ...h, symbol: sym };
+    });
+    if (!accChanged) return a;
+    changed = true;
+    return { ...a, holdings };
+  });
+  return { accounts: fixed, changed };
+}
 
 export function initState(data, profileId) {
   _profileId = profileId;
@@ -21,6 +43,11 @@ export function initState(data, profileId) {
     retirementInputs:  data?.retirementInputs  ?? null,
     budgetEstInputs:   data?.budgetEstInputs   ?? null,
   };
+  const { accounts, changed } = normalizeHoldingSymbols(_data.accounts);
+  if (changed) {
+    _data = { ..._data, accounts };
+    saveData(_data, _profileId);
+  }
 }
 let _listeners = [];
 
@@ -213,7 +240,7 @@ export function getAccountValueHistory(accountId) {
 export function addHolding(accountId, symbol, shares, origin, assetType, instrumentType, dividendPerShare, dividendReinvested) {
   const holding = {
     id: generateId(),
-    symbol: symbol.trim().toUpperCase(),
+    symbol: normalizeSymbol(symbol),
     shares: parseFloat(shares),
     ...(origin ? { origin } : {}),
     ...(assetType ? { assetType } : {}),
@@ -243,7 +270,7 @@ export function updateHolding(accountId, holdingId, symbol, shares, origin, asse
         ...a,
         holdings: a.holdings.map((h) => {
           if (h.id !== holdingId) return h;
-          const updated = { ...h, symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) };
+          const updated = { ...h, symbol: normalizeSymbol(symbol), shares: parseFloat(shares) };
           if (origin) updated.origin = origin; else delete updated.origin;
           if (assetType) updated.assetType = assetType; else delete updated.assetType;
           if (instrumentType) updated.instrumentType = instrumentType; else delete updated.instrumentType;
@@ -321,7 +348,7 @@ export function applyHoldingsImport(accountId, { updates = [], deletes = [], add
         .filter((h) => !deleteIds.has(h.id))
         .map((h) => updateMap.has(h.id) ? { ...h, shares: updateMap.get(h.id) } : h);
       adds.forEach(({ symbol, shares, origin, assetType, instrumentType }) => {
-        const h = { id: generateId(), symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) };
+        const h = { id: generateId(), symbol: normalizeSymbol(symbol), shares: parseFloat(shares) };
         if (origin)         h.origin         = origin;
         if (assetType)      h.assetType      = assetType;
         if (instrumentType) h.instrumentType = instrumentType;

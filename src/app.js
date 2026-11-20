@@ -700,7 +700,7 @@ function loadPricesForCurrentView({ force = false } = {}) {
   }
 
   const nothingToShow = symbols.every((s) => prices[s] === undefined);
-  refreshQuotes(symbols, { force, onQuote: handleQuote })
+  refreshQuotes(symbols, { force, onQuote: handleQuote, mutualFunds: mutualFundSymbols() })
     .then(({ needsManualEntry }) => {
       cancelScheduledRender();
       scheduleRender(userIsEditing() ? RENDER_THROTTLE_MS : 0);
@@ -719,6 +719,13 @@ function loadPricesForCurrentView({ force = false } = {}) {
       render();
     });
   if (nothingToShow) render(); // show the loading state
+}
+
+/** Symbols held anywhere with instrument type "fund" — priced via Alpha Vantage. */
+function mutualFundSymbols() {
+  return new Set(getAccounts().flatMap((a) =>
+    (a.holdings || []).filter((h) => h.instrumentType === "fund").map((h) => h.symbol)
+  ));
 }
 
 function uniqueSymbols(accounts) {

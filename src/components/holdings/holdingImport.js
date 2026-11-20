@@ -1,6 +1,7 @@
 import { Modal } from "../ui/modal.js";
 import { applyHoldingsImport } from "../../state.js";
 import { readXlsxRows } from "../../utils/xlsx.js";
+import { normalizeSymbol } from "../../utils/symbols.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ function rowSymbol(row, symCol, nameCol) {
   let sym = (row[symCol] || "").trim();
   if (PLACEHOLDER_SYMBOL.test(sym)) sym = "";
   if (!sym && nameCol >= 0 && /^cash\b/i.test((row[nameCol] || "").trim())) sym = "CASH";
-  return sym;
+  return normalizeSymbol(sym); // HEI'A → HEI-A
 }
 
 const BOND_WORDS = /\b(BONDS?|BND|TREASURY|TREAS|GOVT|GOVERNMENT|MUNI|MUNICIPAL|FIXED INC(OME)?|INCOME|DURATION|AGGREGATE|AGG)\b/;
@@ -227,7 +228,7 @@ export function showHoldingImportModal(account) {
     const headers = _csvRows[headerIdx];
     const rowsBelowHeader = _csvRows.slice(headerIdx + 1);
     const det = autoDetectColumns(headers);
-    const existingSymbols = new Set(account.holdings.map((h) => h.symbol.toUpperCase()));
+    const existingSymbols = new Set(account.holdings.map((h) => normalizeSymbol(h.symbol)));
 
     // Drops totals and footer text (disclaimers, download dates). A row without any number
     // is only kept if it names a current holding, so it can't get flagged for removal.
@@ -237,7 +238,7 @@ export function showHoldingImportModal(account) {
         .map((row) => ({ row, symbol: rowSymbol(row, symCol, det.nameCol) }))
         .filter(({ row, symbol }) => {
           if (!symbol || TOTAL_ROW.test(symbol)) return false;
-          if (existingSymbols.has(symbol.toUpperCase())) return true;
+          if (existingSymbols.has(symbol)) return true;
           return (qtyCol >= 0 && parseNum(row[qtyCol]) !== null) ||
                  (valCol >= 0 && parseNum(row[valCol]) !== null);
         });
@@ -321,7 +322,7 @@ export function showHoldingImportModal(account) {
       const importRows = [];
       const cell = (row, col) => (col >= 0 ? (row[col] || "").trim() : "");
       for (const { row, symbol: rawSym } of holdingRows(symCol, qtyCol, valCol)) {
-        const symbol = rawSym.toUpperCase();
+        const symbol = rawSym;
         importRows.push({
           symbol,
           rawQty: qtyCol >= 0 ? parseNum(row[qtyCol]) : null,
@@ -347,7 +348,7 @@ export function showHoldingImportModal(account) {
   // ── Step 3: Review changes ──────────────────────────────────────────────────
   function step3(importRows) {
     const importBySymbol  = new Map(importRows.map((r) => [r.symbol, r]));
-    const existingBySymbol = new Map(account.holdings.map((h) => [h.symbol.toUpperCase(), h]));
+    const existingBySymbol = new Map(account.holdings.map((h) => [normalizeSymbol(h.symbol), h]));
 
     // Effective quantity: use rawQty if present; for cash fall back to rawVal
     function effectiveQty(rawQty, rawVal, assetType) {
@@ -394,7 +395,7 @@ export function showHoldingImportModal(account) {
     });
 
     account.holdings.forEach((h) => {
-      if (!importBySymbol.has(h.symbol.toUpperCase())) {
+      if (!importBySymbol.has(normalizeSymbol(h.symbol))) {
         deletes.push({ holding: h, skip: false });
       }
     });

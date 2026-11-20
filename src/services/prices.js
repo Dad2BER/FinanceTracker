@@ -1,6 +1,7 @@
 import { fetchQuote as fetchFinnhubQuote } from "./finnhub.js";
 import { fetchQuote as fetchAvQuote, isAvailable as avAvailable } from "./alphavantage.js";
 import { loadPriceCache, savePriceCache } from "./storage.js";
+import { finnhubSymbolCandidates, isMutualFundTicker } from "../utils/symbols.js";
 
 /**
  * Cache-first price service.
@@ -11,10 +12,12 @@ import { loadPriceCache, savePriceCache } from "./storage.js";
  * fetches only symbols whose cache is older than STALE_AFTER_MS, through
  * Finnhub's rate-limited queue, reporting each price as it arrives.
  *
- * Alpha Vantage is used only for symbols Finnhub doesn't carry (it returned no
- * price, e.g. mutual funds) — never for rate-limited or failed requests. Such
- * symbols are remembered (finnhubMissAt) and go straight to Alpha Vantage for
- * FINNHUB_MISS_TTL_MS before Finnhub is tried again.
+ * Mutual funds (instrument type "fund", or a five-letter ticker ending in X)
+ * go straight to Alpha Vantage — Finnhub's free tier doesn't price them. Other
+ * symbols use Alpha Vantage only when Finnhub doesn't carry them (no price or
+ * 403) — never for rate-limited or failed requests. Those are remembered
+ * (finnhubMissAt) and skip Finnhub for FINNHUB_MISS_TTL_MS. Share-class symbols
+ * (HEI-A) are tried on Finnhub as HEI.A, then HEI-A.
  */
 export const STALE_AFTER_MS = 30 * 60 * 1000;            // 30 minutes
 const MANUAL_PROMPT_AFTER_MS = 24 * 60 * 60 * 1000;       // prompt if failing and > 24h old
@@ -93,25 +96,7 @@ export function staleSymbols(symbols, now = Date.now()) {
 
 // ── Fetching ──────────────────────────────────────────────────────────────────
 
-async function fetchOne(sym, onQuote) {
-  const c = cache();
-  if (Date.now() - (c[sym]?.finnhubMissAt || 0) >= FINNHUB_MISS_TTL_MS) {
-    try {
-      const r = await fetchFinnhubQuote(sym);
-      if (r.status === "ok") {
-        store(sym, r);
-        onQuote(sym, r.price, r.dp !== null ? { dp: r.dp, d: r.d } : null);
-        return true;
-      }
-      // Finnhub doesn't carry this symbol — remember, then try Alpha Vantage.
-      c[sym] = { ...(c[sym] || {}), finnhubMissAt: Date.now() };
-      persistSoon();
-    } catch (e) {
-      console.warn(`[finnhub] ${sym}: ${e.message}`);
-      return false;
-    }
-  }
-  if (!avAvailable()) return false;
+async function fetchFromAv(sym, onQuote) {
   try {
     const price = await fetchAvQuote(sym);
     store(sym, { price });
@@ -123,18 +108,46 @@ async function fetchOne(sym, onQuote) {
   }
 }
 
+async function fetchOne(sym, onQuote, mutualFunds) {
+  const c = cache();
+  const isFund = mutualFunds.has(sym) || isMutualFundTicker(sym);
+  if (isFund && avAvailable()) return fetchFromAv(sym, onQuote);
+
+  if (isFund || Date.now() - (c[sym]?.finnhubMissAt || 0) >= FINNHUB_MISS_TTL_MS) {
+    try {
+      for (const candidate of finnhubSymbolCandidates(sym)) {
+        const r = await fetchFinnhubQuote(candidate);
+        if (r.status === "ok") {
+          store(sym, r);
+          onQuote(sym, r.price, r.dp !== null ? { dp: r.dp, d: r.d } : null);
+          return true;
+        }
+      }
+      // Finnhub doesn't carry this symbol — remember, then try Alpha Vantage.
+      c[sym] = { ...(c[sym] || {}), finnhubMissAt: Date.now() };
+      persistSoon();
+    } catch (e) {
+      console.warn(`[finnhub] ${sym}: ${e.message}`);
+      return false;
+    }
+  }
+  if (!avAvailable()) return false;
+  return fetchFromAv(sym, onQuote);
+}
+
 /**
  * Fetches stale symbols (or all of them with `force`). Symbols already being
  * fetched aren't requested twice. `onQuote(symbol, price, detail|null)` is called
- * as each price arrives. Resolves when all requested symbols have settled to
+ * as each price arrives. `mutualFunds` (Set) names symbols held as instrument
+ * type "fund", which are priced via Alpha Vantage. Resolves when all requested symbols have settled to
  *   { needsManualEntry: [{ symbol, cachedPrice, cachedAt }] }
  * — symbols that failed and have no cached price, or one more than 24h old.
  */
-export async function refreshQuotes(symbols, { force = false, onQuote = () => {} } = {}) {
+export async function refreshQuotes(symbols, { force = false, onQuote = () => {}, mutualFunds = new Set() } = {}) {
   const targets = force ? [...new Set(symbols)] : staleSymbols([...new Set(symbols)]);
   const waits = targets.map((sym) => {
     if (!_inflight.has(sym)) {
-      const p = fetchOne(sym, onQuote).finally(() => { _inflight.delete(sym); emitStatus(); });
+      const p = fetchOne(sym, onQuote, mutualFunds).finally(() => { _inflight.delete(sym); emitStatus(); });
       _inflight.set(sym, p);
     }
     return _inflight.get(sym).then((ok) => [sym, ok]);
