@@ -9,7 +9,8 @@ import { finnhubSymbolCandidates, isMutualFundTicker } from "../utils/symbols.js
  * Every price ever fetched is kept in a localStorage cache:
  *   { [symbol]: { price, fetchedAt, dp, d, finnhubMissAt? } }
  * Views show cached prices immediately (getCachedQuotes); refreshQuotes then
- * fetches only symbols whose cache is older than STALE_AFTER_MS, through
+ * fetches only symbols whose cache is older than STALE_AFTER_MS (mutual funds:
+ * FUND_STALE_AFTER_MS — their price only changes once a day), through
  * Finnhub's rate-limited queue, reporting each price as it arrives.
  *
  * Mutual funds (instrument type "fund", or a five-letter ticker ending in X)
@@ -20,6 +21,7 @@ import { finnhubSymbolCandidates, isMutualFundTicker } from "../utils/symbols.js
  * (HEI-A) are tried on Finnhub as HEI.A, then HEI-A.
  */
 export const STALE_AFTER_MS = 30 * 60 * 1000;            // 30 minutes
+export const FUND_STALE_AFTER_MS = 6 * 60 * 60 * 1000;   // 6 hours — mutual funds
 const MANUAL_PROMPT_AFTER_MS = 24 * 60 * 60 * 1000;       // prompt if failing and > 24h old
 const FINNHUB_MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;      // re-check Finnhub weekly
 
@@ -88,10 +90,22 @@ export function getCachedQuotes(symbols) {
   return { prices, details };
 }
 
-/** Symbols with no cached price or one older than STALE_AFTER_MS. */
-export function staleSymbols(symbols, now = Date.now()) {
+/** Mutual funds: held as instrument type "fund", or a five-letter ticker ending in X. */
+function isFund(sym, mutualFunds) {
+  return mutualFunds.has(sym) || isMutualFundTicker(sym);
+}
+
+/**
+ * Symbols with no cached price, or one older than STALE_AFTER_MS
+ * (FUND_STALE_AFTER_MS for mutual funds — see `mutualFunds` on refreshQuotes).
+ */
+export function staleSymbols(symbols, { mutualFunds = new Set(), now = Date.now() } = {}) {
   const c = cache();
-  return symbols.filter((s) => !(c[s]?.price > 0) || now - (c[s].fetchedAt || 0) >= STALE_AFTER_MS);
+  return symbols.filter((s) => {
+    if (!(c[s]?.price > 0)) return true;
+    const maxAge = isFund(s, mutualFunds) ? FUND_STALE_AFTER_MS : STALE_AFTER_MS;
+    return now - (c[s].fetchedAt || 0) >= maxAge;
+  });
 }
 
 // ── Fetching ──────────────────────────────────────────────────────────────────
@@ -110,10 +124,10 @@ async function fetchFromAv(sym, onQuote) {
 
 async function fetchOne(sym, onQuote, mutualFunds) {
   const c = cache();
-  const isFund = mutualFunds.has(sym) || isMutualFundTicker(sym);
-  if (isFund && avAvailable()) return fetchFromAv(sym, onQuote);
+  const fund = isFund(sym, mutualFunds);
+  if (fund && avAvailable()) return fetchFromAv(sym, onQuote);
 
-  if (isFund || Date.now() - (c[sym]?.finnhubMissAt || 0) >= FINNHUB_MISS_TTL_MS) {
+  if (fund || Date.now() - (c[sym]?.finnhubMissAt || 0) >= FINNHUB_MISS_TTL_MS) {
     try {
       for (const candidate of finnhubSymbolCandidates(sym)) {
         const r = await fetchFinnhubQuote(candidate);
@@ -139,12 +153,18 @@ async function fetchOne(sym, onQuote, mutualFunds) {
  * Fetches stale symbols (or all of them with `force`). Symbols already being
  * fetched aren't requested twice. `onQuote(symbol, price, detail|null)` is called
  * as each price arrives. `mutualFunds` (Set) names symbols held as instrument
- * type "fund", which are priced via Alpha Vantage. Resolves when all requested symbols have settled to
+ * type "fund", which are priced via Alpha Vantage. `force` refetches every
+ * stock/ETF but still leaves mutual funds fetched within FUND_STALE_AFTER_MS
+ * alone, so repeated Refresh clicks can't burn Alpha Vantage's daily quota. Resolves when all requested symbols have settled to
  *   { needsManualEntry: [{ symbol, cachedPrice, cachedAt }] }
  * — symbols that failed and have no cached price, or one more than 24h old.
  */
 export async function refreshQuotes(symbols, { force = false, onQuote = () => {}, mutualFunds = new Set() } = {}) {
-  const targets = force ? [...new Set(symbols)] : staleSymbols([...new Set(symbols)]);
+  const unique = [...new Set(symbols)];
+  const staleFunds = new Set(staleSymbols(unique.filter((s) => isFund(s, mutualFunds)), { mutualFunds }));
+  const targets = force
+    ? unique.filter((s) => !isFund(s, mutualFunds) || staleFunds.has(s))
+    : staleSymbols(unique, { mutualFunds });
   const waits = targets.map((sym) => {
     if (!_inflight.has(sym)) {
       const p = fetchOne(sym, onQuote, mutualFunds).finally(() => { _inflight.delete(sym); emitStatus(); });

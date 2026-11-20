@@ -694,13 +694,14 @@ function loadPricesForCurrentView({ force = false } = {}) {
   if (!symbols) return;
   if (mergeCachedPrices(symbols)) render();
 
-  if (!force && staleSymbols(symbols).length === 0) {
+  const mutualFunds = mutualFundSymbols();
+  if (!force && staleSymbols(symbols, { mutualFunds }).length === 0) {
     recordDailyValues();
     return;
   }
 
   const nothingToShow = symbols.every((s) => prices[s] === undefined);
-  refreshQuotes(symbols, { force, onQuote: handleQuote, mutualFunds: mutualFundSymbols() })
+  refreshQuotes(symbols, { force, onQuote: handleQuote, mutualFunds })
     .then(({ needsManualEntry }) => {
       cancelScheduledRender();
       scheduleRender(userIsEditing() ? RENDER_THROTTLE_MS : 0);

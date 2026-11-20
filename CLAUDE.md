@@ -140,7 +140,7 @@ getRetirementInputsFromStorage(profileId?)
 
 **Price fetching is cache-first** — designed for 300+ symbols on Finnhub's free tier (60 calls/min):
 - Price cache in localStorage (`financetracker_pricecache`): `{ [symbol]: { price, fetchedAt, dp, d, finnhubMissAt? } }`.
-- A view shows cached prices immediately; only symbols older than **30 minutes** (`STALE_AFTER_MS`) are re-fetched, in the background, and stream in via `onQuote`. "Refresh Prices" forces all of the view's symbols (still throttled — ~5 min for 300).
+- A view shows cached prices immediately; only symbols older than **30 minutes** (`STALE_AFTER_MS`) — **6 hours for mutual funds** (`FUND_STALE_AFTER_MS`) — are re-fetched, in the background, and stream in via `onQuote`. "Refresh Prices" forces all of the view's stocks/ETFs (still throttled — ~5 min for 300) but still skips mutual funds fetched within 6 hours, protecting Alpha Vantage's ~25/day quota.
 - Symbols already in flight are never requested twice (overlapping refreshes share the request).
 - Finnhub returning `c = 0` or HTTP 403 means it doesn't carry the symbol → marked `finnhubMissAt`, sent to Alpha Vantage, and skipped on Finnhub for 7 days. Rate-limited / failed requests are **not** sent to AV.
 - **Mutual funds go straight to Alpha Vantage**: holdings with instrument type `fund` (passed as `mutualFunds` by `app.js`) or any five-letter ticker ending in X (`isMutualFundTicker`). Finnhub is tried only if AV is unavailable.
