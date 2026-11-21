@@ -7,10 +7,10 @@ import { createPieChart } from "../dashboard/pieChart.js";
 // Health        — top-level category "Health"
 // Living Exp.   — every other top-level category
 // Transfers and excluded transactions are ignored, as on Monthly Spend.
-// Transactions tagged "Business" are left out entirely.
+// Transactions whose tag is marked "Exclude from Tracking" in Settings → Tags
+// are left out entirely.
 
 const CAP_EX_TAG = "Cap. Ex.";
-const EXCLUDED_TAGS = new Set(["Business"]);
 const ENTERTAINMENT_CATS = new Set(["Entertainment", "Restaurants"]);
 const HEALTH_CATS = new Set(["Health"]);
 const FIRST_ANNUAL_YEAR = 2026;
@@ -74,12 +74,18 @@ function bucketFor(tx, catName) {
   return "Living Exp.";
 }
 
-export function renderTrackingView(container, accounts, categories) {
+export function renderTrackingView(container, accounts, categories, tags = []) {
   container.innerHTML = "";
 
   function rerender() {
-    renderTrackingView(container, accounts, categories);
+    renderTrackingView(container, accounts, categories, tags);
   }
+
+  const excludedTagNames = tags
+    .filter(t => t.excludeFromTracking && !t.protected)
+    .map(t => t.name.trim())
+    .sort((a, b) => a.localeCompare(b));
+  const excludedTags = new Set(excludedTagNames.map(n => n.toLowerCase()));
 
   // ── Header ──────────────────────────────────────────────────────────────────
   const header = document.createElement("div");
@@ -107,6 +113,13 @@ export function renderTrackingView(container, accounts, categories) {
   titleRow.appendChild(modeToggle);
   header.appendChild(titleRow);
   container.appendChild(header);
+
+  if (excludedTagNames.length > 0) {
+    const note = document.createElement("p");
+    note.className = "tracking-excluded-note";
+    note.textContent = `Excluding tags: ${excludedTagNames.join(", ")} (change in Settings → Tags)`;
+    container.appendChild(note);
+  }
 
   // ── Data ────────────────────────────────────────────────────────────────────
   const ledgers = accounts.filter(a => a.accountType === "ledger");
@@ -166,7 +179,7 @@ export function renderTrackingView(container, accounts, categories) {
       const month = (tx.date || "").slice(0, 7);
       if (month.length !== 7 || month < rangeStart || month > currentMonthStr) return;
       if (tx.excluded) return;
-      if (EXCLUDED_TAGS.has((tx.tag || "").trim())) return;
+      if (excludedTags.has((tx.tag || "").trim().toLowerCase())) return;
       const catName = (tx.categoryId ? catById.get(tx.categoryId) : null) || "Uncategorized";
       if (catName === "Transfer") return;
       const bucket = bucketFor(tx, catName);

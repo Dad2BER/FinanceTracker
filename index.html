@@ -326,6 +326,15 @@
       padding: 0.15rem 0.5rem;
     }
     .settings-tag-add { padding-top: 0.5rem; }
+    .settings-tag-exclude {
+      font-size: 0.8rem;
+      color: var(--color-text-dim);
+      cursor: pointer;
+      user-select: none;
+      margin-right: 0.75rem;
+      white-space: nowrap;
+    }
+    .settings-tag-exclude:has(input:checked) { color: var(--color-text); }
 
     /* ── Settings Return of Capital Section ──────────────────────────────── */
     .settings-roc-section {
@@ -1486,6 +1495,11 @@
 
     /* ── Tracking (Reports) ──────────────────────────────────────────────── */
     .tracking-pie-col { width: 290px; }
+    .tracking-excluded-note {
+      font-size: 0.8rem;
+      color: var(--color-text-dim);
+      margin: -0.5rem 0 1rem;
+    }
     .tracking-totals {
       width: 100%;
       border-collapse: collapse;

@@ -98,6 +98,7 @@ addTransaction / updateTransaction / deleteTransaction
 addCategory / updateCategory / deleteCategory
 addPayee / updatePayee / deletePayee
 addTag / updateTag / deleteTag  // no-op on the protected "Cap. Ex." tag
+setTagExcludeFromTracking(id, exclude)  // Settings → Tags checkbox; Tracking report skips these tags
 getDividendIncome() / addDividendIncome / updateDividendIncome / deleteDividendIncome
 addDividendIncomeBatch(records)  // used by the CSV importer — one save for the whole file
 getRocRates() / addRocRate(year, symbol, pct) / updateRocRate(id, symbol, pct) / deleteRocRate(id)
@@ -226,10 +227,12 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
   id: string,
   name: string,
   protected: boolean,  // true only for the seeded "Cap. Ex." tag — blocks rename/delete
+  excludeFromTracking: boolean,  // ticked in Settings → Tags; Tracking report drops every tx with this tag
 }
 ```
 - Tags are a managed pick-list (Settings → Tags), but a transaction's `tag` is still stored as a plain string, not a tag id — deleting a tag does not touch transactions that already used its name.
 - Every profile is seeded with one non-deletable, non-renamable tag: **"Cap. Ex."** (`protected: true`), both on profile creation and via a one-time migration for existing profiles in `server.py`.
+- `excludeFromTracking` (SQLite `tags.exclude_from_tracking`) is set via `setTagExcludeFromTracking(id, bool)` in `state.js`; not offered for protected tags. Matching against `tx.tag` is case-insensitive and trimmed. When the column was first added, the migration ticked it for "Business" (previously hard-coded in `trackingView.js`).
 
 ### Check (`Settings → Check Register`)
 ```js

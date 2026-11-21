@@ -5,7 +5,7 @@ import {
   addCategory, updateCategory, deleteCategory,
   addSubcategory, updateSubcategory, deleteSubcategory,
   addPayee, updatePayee, deletePayee,
-  addTag, updateTag, deleteTag,
+  addTag, updateTag, deleteTag, setTagExcludeFromTracking,
   addRocRate, updateRocRate, deleteRocRate,
   getCategories, getPayees, getRocRates, toggleAccountHidden, setAccountInstitution,
   addCheck, updateCheck, deleteCheck, autoLinkChecks, getChecks, getAccounts,
@@ -809,6 +809,12 @@ export function renderSettingsTags(container, tags) {
   container.innerHTML = "";
   renderPageHeader(container, "Tags");
 
+  const intro = document.createElement("p");
+  intro.className = "dim";
+  intro.style.cssText = "font-size:0.85rem;margin:0 0 0.75rem;";
+  intro.textContent = "Tick “Exclude from Tracking” to leave every transaction with that tag out of the Budget → Tracking report.";
+  container.appendChild(intro);
+
   if (tags.length === 0) {
     const empty = document.createElement("p");
     empty.className = "dim";
@@ -842,6 +848,18 @@ export function renderSettingsTags(container, tags) {
           badge.textContent = "Protected";
           actions.appendChild(badge);
         } else {
+          const excludeLabel = document.createElement("label");
+          excludeLabel.className = "checkbox-label settings-tag-exclude";
+          excludeLabel.title = "Leave transactions with this tag out of the Tracking report";
+          const excludeCb = document.createElement("input");
+          excludeCb.type = "checkbox";
+          excludeCb.checked = !!tag.excludeFromTracking;
+          excludeCb.addEventListener("change", () =>
+            setTagExcludeFromTracking(tag.id, excludeCb.checked));
+          excludeLabel.appendChild(excludeCb);
+          excludeLabel.appendChild(document.createTextNode(" Exclude from Tracking"));
+          actions.appendChild(excludeLabel);
+
           const editBtn = document.createElement("button");
           editBtn.className = "icon-btn";
           editBtn.title = "Rename";

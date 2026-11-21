@@ -239,6 +239,16 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Per-tag flag: leave transactions with this tag out of the Tracking report.
+    # The first time the column is added, carry over the tag that used to be
+    # hard-coded in the report ("Business") so its totals don't change.
+    try:
+        con.execute("ALTER TABLE tags ADD COLUMN exclude_from_tracking INTEGER NOT NULL DEFAULT 0")
+        con.execute("UPDATE tags SET exclude_from_tracking = 1 WHERE name = 'Business'")
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     # ── Data migrations ────────────────────────────────────────────────────────
     # Rename account_type 'liability' → 'ledger'
     con.execute("UPDATE accounts SET account_type = 'ledger' WHERE account_type = 'liability'")
@@ -415,7 +425,12 @@ def load_state(profile_id):
         (profile_id,)
     ).fetchall()
     tags = [
-        {"id": t["id"], "name": t["name"], "protected": bool(t["protected"])}
+        {
+            "id": t["id"],
+            "name": t["name"],
+            "protected": bool(t["protected"]),
+            "excludeFromTracking": bool(t["exclude_from_tracking"]),
+        }
         for t in tag_rows
     ]
 
@@ -550,8 +565,10 @@ def save_state(data, profile_id):
             # ── Tags ───────────────────────────────────────────────────────────
             for t in tags:
                 con.execute(
-                    "INSERT INTO tags (id, name, protected, profile_id) VALUES (?, ?, ?, ?)",
-                    (t["id"], t["name"], 1 if t.get("protected") else 0, profile_id)
+                    "INSERT INTO tags (id, name, protected, exclude_from_tracking, profile_id) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (t["id"], t["name"], 1 if t.get("protected") else 0,
+                     1 if t.get("excludeFromTracking") else 0, profile_id)
                 )
 
             # ── Accounts + Holdings + Transactions ─────────────────────────────

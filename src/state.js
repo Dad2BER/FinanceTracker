@@ -948,7 +948,7 @@ export function getTags() {
 // a defensive backstop (the UI already hides their rename/delete controls).
 
 export function addTag(name) {
-  const tag = { id: generateId(), name: name.trim(), protected: false };
+  const tag = { id: generateId(), name: name.trim(), protected: false, excludeFromTracking: false };
   _data = { ..._data, tags: [..._data.tags, tag] };
   saveData(_data, _profileId);
   notify();
@@ -960,6 +960,19 @@ export function updateTag(id, name) {
     ..._data,
     tags: _data.tags.map((t) =>
       t.id === id && !t.protected ? { ...t, name: name.trim() } : t
+    ),
+  };
+  saveData(_data, _profileId);
+  notify();
+}
+
+// Marks a tag so the Tracking report leaves out every transaction carrying it.
+// Not offered for protected tags ("Cap. Ex." is one of the report's own lines).
+export function setTagExcludeFromTracking(id, exclude) {
+  _data = {
+    ..._data,
+    tags: _data.tags.map((t) =>
+      t.id === id && !t.protected ? { ...t, excludeFromTracking: !!exclude } : t
     ),
   };
   saveData(_data, _profileId);
