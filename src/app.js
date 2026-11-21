@@ -514,7 +514,7 @@ function render() {
     } else if (view.page === "ret-budget-est") {
       renderBudgetEstView(shellContent);
     } else {
-      renderReportsView(shellContent, _reportAccounts, _reportCategories, _reportOnBack);
+      renderReportsView(shellContent, _reportAccounts, _reportCategories, _reportOnBack, getTags());
     }
   } else if (view.tab === "retirement") {
     if (view.page === "ret-simulation") {

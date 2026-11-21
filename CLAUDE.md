@@ -232,7 +232,7 @@ This preserves focus so keyboard input (arrow keys, typing) keeps working after 
 ```
 - Tags are a managed pick-list (Settings → Tags), but a transaction's `tag` is still stored as a plain string, not a tag id — deleting a tag does not touch transactions that already used its name.
 - Every profile is seeded with one non-deletable, non-renamable tag: **"Cap. Ex."** (`protected: true`), both on profile creation and via a one-time migration for existing profiles in `server.py`.
-- `excludeFromTracking` (SQLite `tags.exclude_from_tracking`) is set via `setTagExcludeFromTracking(id, bool)` in `state.js`; not offered for protected tags. Matching against `tx.tag` is case-insensitive and trimmed. When the column was first added, the migration ticked it for "Business" (previously hard-coded in `trackingView.js`).
+- `excludeFromTracking` (SQLite `tags.exclude_from_tracking`) is set via `setTagExcludeFromTracking(id, bool)` in `state.js`; not offered for protected tags. Matching against `tx.tag` is case-insensitive and trimmed. When the column was first added, the migration ticked it for "Business" (previously hard-coded in `trackingView.js`). Monthly Spend (`reportsView.js`) also drops these tags while "Treat Tag as Category" is unchecked, and includes them (as their own segments) when it is checked.
 
 ### Check (`Settings → Check Register`)
 ```js

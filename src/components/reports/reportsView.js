@@ -40,13 +40,22 @@ function subtractMonths(year, month, n) {
   return `${y}-${String(m).padStart(2, "0")}`;
 }
 
-export function renderReportsView(container, accounts, categories, onBack) {
+export function renderReportsView(container, accounts, categories, onBack, tags = []) {
   container.innerHTML = "";
 
   // re-render helper (preserves mode)
   function rerender() {
-    renderReportsView(container, accounts, categories, onBack);
+    renderReportsView(container, accounts, categories, onBack, tags);
   }
+
+  // Tags marked "Exclude from Tracking" (Settings → Tags) are also left out of
+  // the plain category view. Ticking "Treat Tag as Category" brings them back,
+  // each as its own bar segment.
+  const excludedTagNames = _tagMode ? [] : tags
+    .filter(t => t.excludeFromTracking && !t.protected)
+    .map(t => t.name.trim())
+    .sort((a, b) => a.localeCompare(b));
+  const excludedTags = new Set(excludedTagNames.map(n => n.toLowerCase()));
 
   // ── Header ──────────────────────────────────────────────────────────────────
   const header = document.createElement("div");
@@ -110,6 +119,13 @@ export function renderReportsView(container, accounts, categories, onBack) {
   header.appendChild(titleRow);
   container.appendChild(header);
 
+  if (excludedTagNames.length > 0) {
+    const note = document.createElement("p");
+    note.className = "tracking-excluded-note";
+    note.textContent = `Excluding tags: ${excludedTagNames.join(", ")} (tick “Treat Tag as Category” to include them)`;
+    container.appendChild(note);
+  }
+
   // ── Data Processing ──────────────────────────────────────────────────────────
   const ledgers = accounts.filter(a => a.accountType === "ledger");
 
@@ -169,6 +185,7 @@ export function renderReportsView(container, accounts, categories, onBack) {
       const month = (tx.date || "").slice(0, 7);
       if (month.length !== 7 || month < startMonthStr || month > currentMonthStr) return;
       if (tx.excluded) return;
+      if (excludedTags.has((tx.tag || "").trim().toLowerCase())) return;
       const catName = tx.categoryId ? catById.get(tx.categoryId) : null;
       if (catName === "Transfer") return;
       const subcatName = tx.subcategoryId ? subcatById.get(tx.subcategoryId) : null;
